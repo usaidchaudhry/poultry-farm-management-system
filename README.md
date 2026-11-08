@@ -1,6 +1,6 @@
 # Poultry Management System (React Frontend)
 
-Final Year Project. Built phase by phase from the PRD. **Current state: frontend demo workflows through Phase 10, backed by browser-persisted mock services.**
+Web Programming Project .**Current state: frontend demo workflows through Phase 10, backed by browser-persisted mock services.**
 
 ## Requirements
 - Node.js 18 or newer (check with `node -v`)
