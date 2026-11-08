@@ -1,0 +1,7 @@
+.alert { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid; border-radius: var(--radius-md); font-size: var(--text-sm); }
+.alert > div { display: flex; flex-direction: column; }
+.alert__icon { flex: none; margin-top: 1px; }
+.alert--error { background: var(--color-danger-soft); border-color: #f1c4c0; color: var(--color-danger-text); }
+.alert--warning { background: var(--color-warning-soft); border-color: #f0d9a8; color: var(--color-warning-text); }
+.alert--info { background: var(--color-info-soft); border-color: #bcd9ec; color: var(--color-info-text); }
+.alert--success { background: var(--color-success-soft); border-color: #b9e0cb; color: var(--color-success-text); }

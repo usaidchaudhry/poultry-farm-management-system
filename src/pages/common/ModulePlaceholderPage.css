@@ -1,0 +1,5 @@
+.placeholder__intro { color: var(--color-text-muted); max-width: 62ch; }
+.placeholder__heading { margin-top: var(--space-5); margin-bottom: var(--space-2); font-size: var(--text-base); }
+.placeholder__list { margin: 0; padding-left: var(--space-5); display: flex; flex-direction: column; gap: var(--space-1); }
+.placeholder__perm { margin-top: var(--space-5); }
+.placeholder__perm code { padding: 1px 6px; border-radius: var(--radius-sm); background: var(--color-surface-muted); }

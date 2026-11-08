@@ -1,0 +1,6 @@
+.profile { display: flex; flex-direction: column; gap: var(--space-5); max-width: 720px; }
+.profile__details { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-4); }
+.profile__details dt { font-size: var(--text-xs); font-weight: 600; color: var(--color-text-muted); }
+.profile__details dd { margin: 2px 0 0; font-weight: 500; word-break: break-word; }
+.profile__areas { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.profile__count { margin-top: var(--space-4); }

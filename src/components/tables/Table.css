@@ -1,0 +1,84 @@
+.table-scroll { overflow-x: auto; }
+
+.table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+
+.table th {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.table tbody tr:last-child td { border-bottom: 0; }
+.table tbody tr:hover { background: #f9fbf8; }
+.table__row--clickable { cursor: pointer; }
+
+.table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+}
+.table__sort:hover { color: var(--color-text); }
+.table__sort-icon { opacity: 0.35; }
+.table__sort-icon--active { opacity: 1; color: var(--color-primary); }
+
+.table__actions { display: flex; gap: 2px; justify-content: flex-end; }
+
+/* Pagination */
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+}
+
+.pagination__summary { color: var(--color-text-muted); }
+.pagination__controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
+.pagination__size { display: flex; align-items: center; gap: var(--space-2); color: var(--color-text-muted); }
+.pagination__size select {
+  height: 32px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.pagination__pages { display: flex; align-items: center; gap: 4px; }
+.pagination__btn {
+  min-width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-weight: 500;
+  cursor: pointer;
+}
+.pagination__btn:hover:not(:disabled) { background: var(--color-surface-muted); }
+.pagination__btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.pagination__btn--active { background: var(--color-primary); color: #fff; }
+.pagination__btn--active:hover:not(:disabled) { background: var(--color-primary-hover); }
+.pagination__gap { padding: 0 4px; color: var(--color-text-muted); }

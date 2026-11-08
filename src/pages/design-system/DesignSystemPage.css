@@ -1,0 +1,32 @@
+.ds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.ds__header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-3); }
+.ds__back { font-size: var(--text-sm); font-weight: 600; }
+
+.ds__stack { display: flex; flex-direction: column; gap: var(--space-4); }
+.ds__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.ds__divider { height: 1px; margin: var(--space-5) 0; background: var(--color-border); }
+
+.ds__metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--space-4); }
+
+.ds__form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.ds__wide { grid-column: 1 / -1; }
+
+.ds__toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ds__states { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-4); }
+.ds__state-box { border: 1px dashed var(--color-border); border-radius: var(--radius-md); }
+
+@media (max-width: 640px) {
+  .ds__form, .ds__toolbar { grid-template-columns: 1fr; }
+}
