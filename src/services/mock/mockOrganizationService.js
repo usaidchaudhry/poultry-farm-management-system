@@ -3,6 +3,7 @@ import { hasCompanyWideScope } from '../../config/roles.js';
 import { ApiError } from '../apiError.js';
 import { delay } from './delay.js';
 import { orgStore } from './mockOrgStore.js';
+import { workService } from '../workService.js';
 
 /*
   Describes each level of the hierarchy.
@@ -90,7 +91,7 @@ export const mockOrganizationService = {
     const farmIds = new Set(scopedFarms.map((farm) => farm.id));
     const scopedHouses = houses.filter((house) => farmIds.has(house.farmId));
     const houseIds = new Set(scopedHouses.map((house) => house.id));
-    const siteIds = new Set(scopedFarms.map((farm) => farm.siteId));
+    const siteIds = new Set([...assignment.siteIds, ...scopedFarms.map((farm) => farm.siteId)]);
     return {
       company: COMPANY,
       sites: sites.filter((site) => siteIds.has(site.id)),
@@ -100,7 +101,7 @@ export const mockOrganizationService = {
     };
   },
 
-  async createEntity(kind, data) {
+  async createEntity(kind, data, actor) {
     await delay(500);
     const cfg = getKind(kind);
     const parentId = cfg.parentKey ? data[cfg.parentKey] : null;
@@ -117,10 +118,12 @@ export const mockOrganizationService = {
 
     const now = new Date().toISOString();
     const record = { id: makeId(kind), ...(cfg.parentKey ? { [cfg.parentKey]: parentId } : {}), ...values, status: 'active', createdAt: now, updatedAt: now };
-    return orgStore.insert(cfg.collection, record);
+    const saved = orgStore.insert(cfg.collection, record);
+    workService.recordAudit(actor, 'created', kind, saved);
+    return saved;
   },
 
-  async updateEntity(kind, id, data) {
+  async updateEntity(kind, id, data, actor) {
     await delay(500);
     const cfg = getKind(kind);
     const existing = getOrThrow(kind, id);
@@ -128,11 +131,13 @@ export const mockOrganizationService = {
     const merged = { ...existing, ...values };
     validate(kind, merged, { isCreate: false });
     assertUniqueName(kind, merged.name, cfg.parentKey ? existing[cfg.parentKey] : null, id);
-    return orgStore.update(cfg.collection, id, { ...values, updatedAt: new Date().toISOString() });
+    const saved = orgStore.update(cfg.collection, id, { ...values, updatedAt: new Date().toISOString() });
+    workService.recordAudit(actor, 'updated', kind, saved, existing);
+    return saved;
   },
 
   // Archive or restore (nothing is ever deleted)
-  async setArchived(kind, id, archived) {
+  async setArchived(kind, id, archived, actor) {
     await delay(450);
     const cfg = getKind(kind);
     const record = getOrThrow(kind, id);
@@ -150,7 +155,9 @@ export const mockOrganizationService = {
       }
     }
     const now = new Date().toISOString();
-    return orgStore.update(cfg.collection, id, archived ? { status: 'archived', archivedAt: now, updatedAt: now } : { status: 'active', archivedAt: null, updatedAt: now });
+    const saved = orgStore.update(cfg.collection, id, archived ? { status: 'archived', archivedAt: now, updatedAt: now } : { status: 'active', archivedAt: null, updatedAt: now });
+    workService.recordAudit(actor, archived ? 'archived' : 'restored', kind, saved, record);
+    return saved;
   },
 
   async listAssignments() {
@@ -158,13 +165,16 @@ export const mockOrganizationService = {
     return orgStore.assignments();
   },
 
-  async setAssignment(userId, { siteIds = [], farmIds = [] }) {
+  async setAssignment(userId, { siteIds = [], farmIds = [] }, actor) {
     await delay(450);
-    const validSites = new Set(orgStore.all('sites').map((site) => site.id));
-    const validFarms = new Set(orgStore.all('farms').map((farm) => farm.id));
-    return orgStore.setAssignment(userId, {
+    const validSites = new Set(orgStore.all('sites').filter((site) => site.status === 'active').map((site) => site.id));
+    const validFarms = new Set(orgStore.all('farms').filter((farm) => farm.status === 'active' && validSites.has(farm.siteId)).map((farm) => farm.id));
+    const before = orgStore.assignments()[userId] || { siteIds: [], farmIds: [] };
+    const saved = orgStore.setAssignment(userId, {
       siteIds: siteIds.filter((id) => validSites.has(id)),
       farmIds: farmIds.filter((id) => validFarms.has(id)),
     });
+    workService.recordAudit(actor, 'assigned scope', 'users', { id: userId, ...saved }, { id: userId, ...before });
+    return saved;
   },
 };

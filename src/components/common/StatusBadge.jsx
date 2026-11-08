@@ -11,6 +11,20 @@ const STATUS_MAP = {
   overdue: { tone: 'danger', label: 'Overdue' },
   critical: { tone: 'danger', label: 'Critical' },
   info: { tone: 'info', label: 'Info' },
+  draft: { tone: 'neutral', label: 'Draft' },
+  submitted: { tone: 'info', label: 'Submitted' },
+  returned: { tone: 'warning', label: 'Returned' },
+  due: { tone: 'info', label: 'Due' },
+  missed: { tone: 'danger', label: 'Missed' },
+  cancelled: { tone: 'neutral', label: 'Cancelled' },
+  recorded: { tone: 'info', label: 'Recorded' },
+  pending_costing: { tone: 'warning', label: 'Pending costing' },
+  finalized: { tone: 'success', label: 'Finalized' },
+  created: { tone: 'info', label: 'Created' },
+  acknowledged: { tone: 'warning', label: 'Acknowledged' },
+  resolved: { tone: 'success', label: 'Resolved' },
+  warning: { tone: 'warning', label: 'Warning' },
+  emergency: { tone: 'danger', label: 'Emergency' },
 };
 
 export default function StatusBadge({ status, label }) {

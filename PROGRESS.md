@@ -1,10 +1,10 @@
-# Build progress (resume guide)
+# Build progress
 
 Project: Poultry Management System, React frontend. Source of truth: the PRD file.
-Rule: finish a chunk, tick it here, then continue. If a session is cut off, start the next
-session with: "Continue Phase 3 from PROGRESS.md in the attached zip" and attach the latest zip.
+Rule: finish a chunk, tick it here, then continue. Use this file and `ASSUMPTIONS.md` to resume remaining integration or browser QA work.
 
 ## Done phases
+- [x] Phase 5: organization hierarchy, selectors, lists and user scope assignment (see below)
 - [x] Phase 4: login, auth context, mock services, user management (see below)
 - [x] Phase 3: app shell, navigation, routing, route guard (see below)
 - [x] Phase 1: setup and foundation
@@ -54,7 +54,7 @@ Chunks
 - [x] B. LoginPage (validation, errors, demo account helper), PendingAccessPage, UserMenu logout update, routes
 - [x] C. Users feature (list, filters, create/edit, role assignment, activate/deactivate), Profile page, registry, README, final check
 
-## Phase 5: organization and farm management  (IN PROGRESS)
+## Phase 5: organization and farm management  (COMPLETE — frontend with mock service)
 Design decisions
 - Hierarchy: Company > Site > Farm > House > Flock. Stored FLAT and normalized (each record has its parent id:
   farm.siteId, house.farmId, flock.houseId, plus status 'active' | 'archived'). This maps directly to MongoDB collections.
@@ -80,7 +80,19 @@ Assumptions to confirm (the PRD leaves these open, section 17 item 3)
 Chunks
 - [x] A. ROLE_SCOPE, seed org data, mock store, mock organization service, facade; service logic tested in node
 - [x] B. FarmContext (+ active selection), selection button/modal in top bar, generic form/details modals, useOrgCrud, shared list pieces
-- [ ] C. Sites/Farms/Houses/Flocks pages, Organization tree page, user scope assignment (Users page), registry, README, final check
+- [x] C. Sites/Farms/Houses/Flocks pages, Organization tree page, user scope assignment (Users page), registry, README, final check
 
-## Next: Phase 6 (not started)
-- Daily reports, mortality, post-mortem. Use `useFarm()` for the active farm/house/flock and the business date.
+Phase 5 assumptions and API boundary are documented in `ASSUMPTIONS.md`.
+
+## Phases 6–9: operational frontend (mock-backed)
+- [x] Phase 6: daily report draft/submit/return workflow, egg and bird calculations, mortality and post-mortem view, bird weight entry.
+- [x] Phase 7: clinical visits, prescription entry/editing, medication tasks, administration outcome and prescriber restriction.
+- [x] Phase 8: stock items and movements, feed formulas and costing, egg production and sales, expense entry and financial summary.
+- [x] Phase 9: notifications, role-aware dashboard metrics, scoped analytics and charts.
+
+## Phase 10: final frontend work
+- [x] Read-only audit log with before/after detail for mock service mutations.
+- [x] Production build and service workflow tests.
+- [ ] Browser visual, responsive, and accessibility pass, plus screenshots. The browser access host was unavailable during this session.
+
+All phases above use browser-persisted mock services because this repository has no Express API. Attachment uploads, server exports, and API-enforced date restrictions wait for backend endpoints. See `ASSUMPTIONS.md` for details.

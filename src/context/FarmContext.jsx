@@ -68,6 +68,7 @@ export function FarmProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selection, setSelection] = useState(EMPTY_SELECTION);
+  const [loadedUserId, setLoadedUserId] = useState(null);
   const requestRef = useRef(0); // ignores answers that arrive after the user changed or signed out
 
   const fetchData = useCallback(
@@ -94,11 +95,13 @@ export function FarmProvider({ children }) {
       requestRef.current += 1;
       setData(EMPTY_DATA);
       setSelection(EMPTY_SELECTION);
+      setLoadedUserId(null);
       setError(null);
       setLoading(false);
       return;
     }
     setSelection(loadSelection(userId));
+    setLoadedUserId(userId);
     fetchData();
   }, [userId, canView, fetchData]);
 
@@ -119,7 +122,15 @@ export function FarmProvider({ children }) {
     return { sites, farms, houses, flocks };
   }, [data]);
 
-  const active = useMemo(() => sanitize(selection, usable), [selection, usable]);
+  const active = useMemo(() => sanitize(loadedUserId === userId ? selection : EMPTY_SELECTION, usable), [selection, usable, loadedUserId, userId]);
+
+  useEffect(() => {
+    if (loadedUserId !== userId || loading || error) return;
+    if (LEVELS.some((level) => selection[`${level}Id`] !== active[`${level}Id`])) {
+      setSelection(active);
+      saveSelection(userId, active);
+    }
+  }, [active, selection, loadedUserId, userId, loading, error]);
 
   const options = useMemo(() => {
     const { siteId, farmId, houseId } = active;

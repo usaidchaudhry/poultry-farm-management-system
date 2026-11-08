@@ -12,9 +12,9 @@ import { mockOrganizationService } from './mock/mockOrganizationService.js';
 */
 export const organizationService = {
   getScopedHierarchy: (actor) => mockOrganizationService.getScopedHierarchy(actor),
-  createEntity: (kind, data) => mockOrganizationService.createEntity(kind, data),
-  updateEntity: (kind, id, data) => mockOrganizationService.updateEntity(kind, id, data),
-  setArchived: (kind, id, archived) => mockOrganizationService.setArchived(kind, id, archived),
+  createEntity: (kind, data, actor) => mockOrganizationService.createEntity(kind, data, actor),
+  updateEntity: (kind, id, data, actor) => mockOrganizationService.updateEntity(kind, id, data, actor),
+  setArchived: (kind, id, archived, actor) => mockOrganizationService.setArchived(kind, id, archived, actor),
   listAssignments: () => mockOrganizationService.listAssignments(),
-  setAssignment: (userId, scope) => mockOrganizationService.setAssignment(userId, scope),
+  setAssignment: (userId, scope, actor) => mockOrganizationService.setAssignment(userId, scope, actor),
 };

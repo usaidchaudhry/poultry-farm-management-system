@@ -1,6 +1,6 @@
 # Poultry Management System (React Frontend)
 
-Final Year Project. Built phase by phase from the PRD. **Current state: Phase 4 (authentication and user access).**
+Final Year Project. Built phase by phase from the PRD. **Current state: frontend demo workflows through Phase 10, backed by browser-persisted mock services.**
 
 ## Requirements
 - Node.js 18 or newer (check with `node -v`)
@@ -17,6 +17,7 @@ Open http://localhost:5173. You land on the sign-in screen. Open "Demo accounts"
 ```bash
 npm run build     # production build into /dist
 npm run preview   # serve the production build locally
+npm test          # service workflow checks
 ```
 
 ## Environment variables
@@ -95,3 +96,17 @@ Add a new menu item: add an entry to `MODULES` in `src/config/modules.js` (and a
 - Safeguards in the mock service: you cannot deactivate yourself or change your own role, and the last active Owner cannot be deactivated or demoted.
 
 Demo accounts (password `Poultry@123`): owner@, production@, farm@, operations@, doctor@ (all `@poultry.test`), plus kamran@ (deactivated) and zoya@ (no role) to test those cases.
+
+## Organization and farm management (Phase 5)
+- `/organization` shows the company hierarchy. Its links open the Sites, Farms, Houses, and Flocks list pages, where authorized users can search, filter, view details, and, with `organization.manage`, create, edit, archive, and restore records.
+- The working-area selector in the top bar stores a user's active site, farm, house, and flock. Options come from that user's permitted scope.
+- Owners can assign sites or individual farms from the Users table. A site assignment includes all of its farms. Company-wide roles do not need assignments.
+- The organization service facade (`src/services/organizationService.js`) currently uses a browser-persisted mock implementation. A real API can replace the facade's methods when the backend is available.
+- Decisions requiring product confirmation are listed in `ASSUMPTIONS.md`.
+
+## Operational frontend (Phases 6–10)
+- Daily reports include eggs, bird population, feed, water, light, health notes, and post-mortem observations. Draft, submission, return for correction, and resubmission states are available. Mortality is a filtered view of reports.
+- Clinical visits can include a prescription, which creates a separate medication task. Farm-side users can record completion or a missed outcome; the prescriber cannot confirm their own task.
+- Inventory includes items, feed stock, low stock, and stock movements. Feed formulas separate composition from costing. Production and sales use separate records with saleable egg stock checks. Finance summarizes recorded sales and expenses.
+- Notifications, dashboard metrics, analytics charts, and the read-only audit log use the same mock records. Demo records are included for the main screens.
+- Backend API calls, media upload, server export, and authoritative date-range enforcement require endpoints that are not in this repository. The browser visual and responsive pass remains pending because the browser access host was unavailable.

@@ -2,6 +2,7 @@ import { ROLES } from '../../config/roles.js';
 import { ApiError } from '../apiError.js';
 import { delay } from './delay.js';
 import { toPublicUser, usersStore } from './mockUsersStore.js';
+import { workService } from '../workService.js';
 
 const VALID_ROLES = Object.values(ROLES);
 
@@ -31,7 +32,7 @@ export const mockUserService = {
     return usersStore.all().map(toPublicUser);
   },
 
-  async createUser({ name, email, password, role, isActive }) {
+  async createUser({ name, email, password, role, isActive }, { actorId } = {}) {
     await delay(500);
     if (isEmailTaken(email)) {
       throw new ApiError('Email already in use.', { code: 'EMAIL_TAKEN', status: 409, fieldErrors: { email: 'A user with this email already exists.' } });
@@ -47,32 +48,40 @@ export const mockUserService = {
       createdAt: new Date().toISOString(),
       lastLoginAt: null,
     });
-    return toPublicUser(record);
+    const saved = toPublicUser(record);
+    workService.recordAudit({ id: actorId || 'system' }, 'created', 'users', saved);
+    return saved;
   },
 
-  async updateUser(id, { name, email }) {
+  async updateUser(id, { name, email }, { actorId } = {}) {
     await delay(500);
-    getOrThrow(id);
+    const before = toPublicUser(getOrThrow(id));
     if (isEmailTaken(email, id)) {
       throw new ApiError('Email already in use.', { code: 'EMAIL_TAKEN', status: 409, fieldErrors: { email: 'A user with this email already exists.' } });
     }
-    return toPublicUser(usersStore.update(id, { name: name.trim(), email: email.trim().toLowerCase() }));
+    const saved = toPublicUser(usersStore.update(id, { name: name.trim(), email: email.trim().toLowerCase() }));
+    workService.recordAudit({ id: actorId || 'system' }, 'updated', 'users', saved, before);
+    return saved;
   },
 
   async assignRole(id, role, { actorId } = {}) {
     await delay(450);
-    getOrThrow(id);
+    const before = toPublicUser(getOrThrow(id));
     if (id === actorId) throw new ApiError('You cannot change your own role.', { code: 'SELF_CHANGE', status: 403 });
     if (role && !VALID_ROLES.includes(role)) throw new ApiError('Unknown role.', { code: 'INVALID_ROLE', status: 400 });
     if (role !== ROLES.OWNER) assertNotLastOwner(id, 'The last active Owner cannot be moved to another role.');
-    return toPublicUser(usersStore.update(id, { role: role || null }));
+    const saved = toPublicUser(usersStore.update(id, { role: role || null }));
+    workService.recordAudit({ id: actorId || 'system' }, 'changed role', 'users', saved, before);
+    return saved;
   },
 
   async setUserActive(id, isActive, { actorId } = {}) {
     await delay(450);
-    getOrThrow(id);
+    const before = toPublicUser(getOrThrow(id));
     if (id === actorId && !isActive) throw new ApiError('You cannot deactivate your own account.', { code: 'SELF_CHANGE', status: 403 });
     if (!isActive) assertNotLastOwner(id, 'The last active Owner cannot be deactivated.');
-    return toPublicUser(usersStore.update(id, { isActive }));
+    const saved = toPublicUser(usersStore.update(id, { isActive }));
+    workService.recordAudit({ id: actorId || 'system' }, isActive ? 'activated' : 'deactivated', 'users', saved, before);
+    return saved;
   },
 };

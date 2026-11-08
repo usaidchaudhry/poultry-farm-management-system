@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useFarm } from '../../context/FarmContext.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { getErrorMessage } from '../../services/apiError.js';
 import { organizationService } from '../../services/organizationService.js';
@@ -8,6 +9,8 @@ import { ENTITY_LABELS } from './entityConfig.js';
 // Create / edit / view / archive / restore logic shared by the Sites, Farms, Houses and Flocks pages.
 export default function useOrgCrud(kind) {
   const toast = useToast();
+  const { user } = useAuth();
+  const actor = { id: user.id, role: user.role };
   const { refresh } = useFarm();
   const label = ENTITY_LABELS[kind];
 
@@ -25,10 +28,10 @@ export default function useOrgCrud(kind) {
 
   const submitForm = async (values) => {
     if (form.mode === 'create') {
-      const created = await organizationService.createEntity(kind, values);
+      const created = await organizationService.createEntity(kind, values, actor);
       toast.success(`${label} "${created.name}" was created.`);
     } else {
-      const updated = await organizationService.updateEntity(kind, form.record.id, values);
+      const updated = await organizationService.updateEntity(kind, form.record.id, values, actor);
       toast.success(`${label} "${updated.name}" was updated.`);
     }
     await refresh();
@@ -37,7 +40,7 @@ export default function useOrgCrud(kind) {
 
   const restore = async (record) => {
     try {
-      await organizationService.setArchived(kind, record.id, false);
+      await organizationService.setArchived(kind, record.id, false, actor);
       toast.success(`${label} "${record.name}" was restored.`);
       await refresh();
     } catch (error) {
@@ -48,7 +51,7 @@ export default function useOrgCrud(kind) {
   const confirmArchive = async () => {
     setBusy(true);
     try {
-      await organizationService.setArchived(kind, archiving.id, true);
+      await organizationService.setArchived(kind, archiving.id, true, actor);
       toast.success(`${label} "${archiving.name}" was archived.`);
       await refresh();
     } catch (error) {

@@ -1,12 +1,12 @@
 import Badge from '../../components/common/Badge.jsx';
 import IconButton from '../../components/common/IconButton.jsx';
 import StatusBadge from '../../components/common/StatusBadge.jsx';
-import { ROLE_INFO } from '../../config/roles.js';
+import { ROLE_INFO, hasCompanyWideScope } from '../../config/roles.js';
 import { formatDate } from '../../utils/formatters.js';
 import './users.css';
 
 // Builds the table columns. Action buttons are only included when the viewer may manage users.
-export function getUserColumns({ canManage, currentUserId, onEdit, onChangeRole, onToggleActive }) {
+export function getUserColumns({ canManage, currentUserId, onEdit, onChangeRole, onToggleActive, onAssignScope }) {
   const columns = [
     {
       key: 'name',
@@ -50,6 +50,7 @@ export function getUserColumns({ canManage, currentUserId, onEdit, onChangeRole,
               disabled={isSelf}
               onClick={() => onChangeRole(row)}
             />
+            {onAssignScope && !hasCompanyWideScope(row.role) && <IconButton icon="home" label={`Assign sites and farms to ${row.name}`} size="sm" onClick={() => onAssignScope(row)} />}
             <IconButton
               icon={row.isActive ? 'xCircle' : 'checkCircle'}
               label={
