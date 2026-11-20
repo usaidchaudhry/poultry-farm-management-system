@@ -1,0 +1,15 @@
+import * as service from './service.js';
+import { parse } from '../../lib/validation.js';
+import { listSchema, calendarDate } from './validation.js';
+export const list = async (req, res) => res.json(await service.listReports(req.actor, parse(listSchema, req.query)));
+export const mortality = async (req, res) => res.json(await service.listReports(req.actor, parse(listSchema, req.query), true));
+export const detail = async (req, res) => res.json({ data: await service.reportDetail(req.actor, req.params.id) });
+export const create = async (req, res) => res.status(201).json({ data: await service.saveReport(req.actor, null, req.input, req.id) });
+export const update = async (req, res) => res.json({ data: await service.saveReport(req.actor, req.params.id, req.input, req.id) });
+export const submit = async (req, res) => res.json({ data: await service.transition(req.actor, req.params.id, req.input, 'submit', req.id) });
+export const returnReport = async (req, res) => res.json({ data: await service.transition(req.actor, req.params.id, req.input, 'return', req.id) });
+export const population = async (req, res) => res.json({ data: await service.populationContext(req.actor, req.params.id, parse(calendarDate, req.query.date)) });
+export const movement = async (req, res) => res.status(201).json({ data: await service.addMovement(req.actor, req.params.id, req.input, req.id) });
+export const measurements = async (req, res) => res.json(await service.listMeasurements(req.actor, parse(listSchema, req.query)));
+export const measurement = async (req, res) => res.json({ data: await service.measurementDetail(req.actor, req.params.id) });
+export const createMeasurement = async (req, res) => res.status(201).json({ data: await service.createMeasurement(req.actor, req.input, req.id) });

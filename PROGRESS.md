@@ -111,7 +111,7 @@ Plan: `LayerFlow_MERN_PRD.md`. Detailed implementation log, data dictionary, dec
 - [x] Final verification: 17 backend checks, 9 original mock checks, browser workflow, production build, documentation links, and 39 server-file syntax checks passed. Local screenshots were reviewed; details and commands are in the implementation log.
 - [x] MERN Phase 3: persistent organization hierarchy, archive/occupancy rules, user site/farm assignment, and live farm selection. See `docs/MERN_PHASE_3_IMPLEMENTATION.md` for the implementation steps, schema/API, decisions, optional two-farm demo seed, and verification.
 
-Boundary: no public signup or default live account password. Configure private server environment values and run the bootstrap command described in README. Site/farm data is now live; operational modules remain Phase 4 onward; their historical mock completion does not mean full-stack completion.
+Boundary: no public signup or default live account password. Configure private server environment values and run the bootstrap command described in README. Site/farm data is now live; daily reports and measurements are now live; remaining operational modules start at Phase 5; their historical mock completion does not mean full-stack completion.
 
 
 ### MERN Phase 3 completion (20 November 2026)
@@ -123,6 +123,22 @@ Boundary: no public signup or default live account password. Configure private s
 - [x] Explicit development demo command creates two farms with separately assigned managers; no default password and no overwrite/reset.
 - [x] Extended MongoDB/API, restart persistence, and browser verification; original mock checks retained.
 - [x] Final Phase 3 checks: 23 backend checks, 9 mock checks, clean-browser workflow, production build, 44 server syntax checks, documentation links, and whitespace checks passed. Desktop organization and mobile scope screenshots were reviewed.
-- [ ] MERN Phase 4: daily reports, mortality, bird measurements, population movements and corrections. Not included in this request.
+- [x] MERN Phase 4: daily reports, mortality, bird measurements, population movements and corrections. Completed at the PRD interim gate; actual stock posting remains for Phases 6/8. See `docs/MERN_PHASE_4_IMPLEMENTATION.md`.
 
 The earlier frontend Phase 5 assumptions are historical. Live MERN Phase 3 supersedes its concurrent-flock assumption with one active flock per house, requires site location, and freezes placement data. Report-draft and unresolved-task archive checks will be added when those live modules exist.
+
+
+### MERN Phase 4 completion (20 November 2026)
+
+- [x] Report, immutable revision, bird movement, measurement, and deferred publication-intent schemas; unique flock/date and source keys.
+- [x] Opening movement migration/backfill and new-flock initialization; approved placements, signed adjustments, counted-opening reconciliation, missing-day gaps, and server-derived totals.
+- [x] Draft/submit/return/resubmit with optimistic versions, required numeric values at submission, correction reasons, preserved effective published snapshots, delta mortality effects, and transactional audit.
+- [x] Farm/ancestor and today/yesterday/history policies on list/detail/revision/write paths; dependent population changes and backdated first submissions protected.
+- [x] Live asynchronous report form/detail/list/revision screens, repeatable samples/medicine/vaccine rows, published mortality, and read-only calculated population.
+- [x] Timestamped bird samples, g/kg normalization, weighted summaries, preceding comparison, optional report links, and unavailable standards.
+- [x] Draft/returned report archive protection, active-context guards, current-bird capacity checks, and readable invalidated drafts.
+- [x] MongoDB/API/concurrency/migration/restart checks and clean-browser Owner/assigned-manager reporting workflow, including phone-width pages.
+- [x] Final Phase 4 verification: 32 backend checks, 9 mock checks, browser workflow, production build, 49 server syntax checks, documentation links, and whitespace checks passed. Report and mobile screenshots were reviewed.
+- [ ] MERN Phase 5: clinical visits, prescriptions, medication tasks, and independent administration.
+
+Publication boundary: every submitted report revision records one deferred egg/feed intent. Inventory references are interim text identifiers; actual inventory/egg ledger posting and negative-stock corrections belong to Phases 6/8. Visit/prescription links and image attachments remain Phase 5/9 dependencies. The full contract and verification evidence are in the Phase 4 log.

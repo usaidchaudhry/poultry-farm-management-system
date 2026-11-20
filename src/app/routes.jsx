@@ -1,3 +1,5 @@
+import DailyReportsPage from '../pages/work/DailyReportsPage.jsx';
+import BirdMeasurementsPage from '../pages/work/BirdMeasurementsPage.jsx';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { ALL_PAGES } from '../config/modules.js';
 import AuthLayout from '../layouts/AuthLayout.jsx';
@@ -46,11 +48,11 @@ const PAGE_REGISTRY = {
   farms: () => <OrgListPage kind="farm" />,
   houses: () => <OrgListPage kind="house" />,
   flocks: () => <OrgListPage kind="flock" />,
-  'daily-reports': () => <WorkPage kind="dailyReports" permission={PERMISSIONS.DAILY_REPORTS_MANAGE} />,
-  mortality: () => <WorkPage kind="dailyReports" permission={PERMISSIONS.DAILY_REPORTS_MANAGE} filterRows={(row) => Number(row.mortality) > 0} intro="Mortality and post-mortem observations are recorded in daily reports." />,
+  'daily-reports': () => config.isMock ? <WorkPage kind="dailyReports" permission={PERMISSIONS.DAILY_REPORTS_MANAGE} /> : <DailyReportsPage />,
+  mortality: () => config.isMock ? <WorkPage kind="dailyReports" permission={PERMISSIONS.DAILY_REPORTS_MANAGE} filterRows={(row) => Number(row.mortality) > 0} /> : <DailyReportsPage mortality />,
   clinical: () => <WorkPage kind="clinicalVisits" permission={PERMISSIONS.CLINICAL_MANAGE} />,
   medication: MedicationPage,
-  'bird-parameters': () => <WorkPage kind="measurements" permission={PERMISSIONS.BIRD_PARAMETERS_MANAGE} />,
+  'bird-parameters': () => config.isMock ? <WorkPage kind="measurements" permission={PERMISSIONS.BIRD_PARAMETERS_MANAGE} /> : <BirdMeasurementsPage />,
   inventory: InventoryPage,
   'feed-formulas': FeedFormulasPage,
   'egg-production': () => <WorkPage kind="eggProduction" permission={PERMISSIONS.EGG_PRODUCTION_MANAGE} />,

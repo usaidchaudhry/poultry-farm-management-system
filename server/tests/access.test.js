@@ -8,12 +8,13 @@ import { connectDatabase, mongoose, transaction } from '../src/config/database.j
 import { createApp } from '../src/app.js';
 import { applyMigrations } from '../src/scripts/migrations.js';
 import { bootstrapOwner } from '../src/scripts/bootstrap-service.js';
-import { User, Role, AuditEvent, SecurityGuard, models } from '../src/modules/access/models.js';
+import { User, Role, AuditEvent, SecurityGuard, Migration, models } from '../src/modules/access/models.js';
 import { idempotentWrite } from '../src/lib/idempotency.js';
 import { businessDate, allowedDateRange } from '../src/policies/dates.js';
 import { assertScope, assertIndependentAdministrator } from '../src/policies/access.js';
 import { money } from '../src/lib/decimal.js';
 import { seedDemoHierarchy } from '../src/scripts/demo-hierarchy-service.js';
+import { reportModels, DailyReport, ReportRevision, BirdMovement, BirdMeasurement, PublicationIntent } from '../src/modules/reports/models.js';
 import { hierarchyModels as H } from '../src/modules/organization/models.js';
 
 const initialPassword = 'Temporary-test-password-123';
@@ -57,6 +58,7 @@ before(async () => {
 }, { timeout: 240000 });
 
 beforeEach(async () => {
+  for (const model of reportModels) await model.deleteMany({});
   for (const model of Object.values(H)) await model.deleteMany({});
   for (const model of models) await model.deleteMany({});
   await mongoose.connection.db.collection('sessions').deleteMany({});
@@ -250,14 +252,14 @@ test('organization is connected and authentication endpoints are rate-limited', 
   await agent.post('/api/v1/auth/login').set('X-CSRF-Token', csrf).send({ email: owner.email, password: 'wrong' }).expect(429);
 });
 
-async function hierarchyFixture() {
+async function hierarchyFixture(placementDate = '2026-11-01') {
   const create = async (kind, values) => (await admin.send('post', `/organization/${kind}s`, values, 201)).body.data;
   const site = await create('site', { name: 'North Site', location: 'Lahore' });
   const farmA = await create('farm', { name: 'Farm Alpha', siteId: site.id });
   const farmB = await create('farm', { name: 'Farm Beta', siteId: site.id });
   const houseA = await create('house', { name: 'House Alpha', farmId: farmA.id, capacity: 1000 });
   const houseB = await create('house', { name: 'House Beta', farmId: farmB.id });
-  const flock = await create('flock', { name: 'Layer Alpha', houseId: houseA.id, initialCount: 500, placementDate: '2026-11-01', birdType: 'Layer' });
+  const flock = await create('flock', { name: 'Layer Alpha', houseId: houseA.id, initialCount: 500, placementDate, birdType: 'Layer' });
   return { create, site, farmA, farmB, houseA, houseB, flock };
 }
 
@@ -363,4 +365,176 @@ test('optional demo fixture creates two isolated managers and refuses to overwri
   }
   await assert.rejects(seedDemoHierarchy(initialPassword), { code: 'DEMO_EXISTS' });
   assert.equal(await H.farm.countDocuments(), 2);
+});
+
+const today = () => businessDate();
+const daysAgo = (n) => new Date(Date.parse(today()) - n * 86400000).toISOString().slice(0, 10);
+const completeReport = (mortality = 2) => ({ eggs: { jumbo: 10, starter: 20, standard: 100, small: 5, floor: 3, broken: 2, discard: 1 }, mortality, feed: { itemReference: 'Layer feed', locationReference: 'House store', bags: 1, bagSizeKg: 50, additionalKg: 2, notes: '' }, waterLitres: 100, lightHours: 16, eggSamples: [{ sampleType: 'single-egg', value: 0.06, unit: 'kg' }, { sampleType: 'single-egg', value: 64, unit: 'g' }, { sampleType: 'tray', value: 1800, unit: 'g' }], medicines: [{ name: 'Recorded medicine', quantity: 1, unit: 'ml', reference: 'Observation only' }], vaccines: [], comments: 'Daily observations', postMortem: 'No diagnosis inferred.' });
+const createReport = async (f, date = today(), data = completeReport(), reason = '') => (await admin.send('post', '/daily-reports', { flockId: f.flock.id, businessDate: date, data, reason }, 201)).body.data;
+
+test('report lifecycle preserves revisions and publishes only delta effects with server-derived totals', async () => {
+  const f = await hierarchyFixture(today());
+  let report = await createReport(f);
+  assert.equal(report.summary.totalEggs, 141);
+  assert.equal(report.summary.saleableEggs, 135);
+  assert.equal(report.summary.feedKg, 52);
+  assert.equal(report.summary.closingBirds, 498);
+  assert.equal(report.summary.eggSampleAverages['single-egg'], 62);
+  assert.equal(report.summary.eggSampleAverages.tray, 1800);
+  await admin.send('post', '/daily-reports', { flockId: f.flock.id, businessDate: today(), data: {} }, 409);
+  report = (await admin.send('post', `/daily-reports/${report.id}/submit`, { version: report.version })).body.data;
+  await admin.send('post', `/daily-reports/${report.id}/submit`, { version: 1 }, 409);
+  await admin.send('patch', `/daily-reports/${report.id}`, { version: report.version, data: completeReport() }, 409);
+  await admin.send('post', `/daily-reports/${report.id}/return`, { version: report.version, reason: '' }, 422);
+  report = (await admin.send('post', `/daily-reports/${report.id}/return`, { version: report.version, reason: 'Correct mortality and egg count' })).body.data;
+  const corrected = completeReport(3); corrected.eggs.standard = 110;
+  report = (await admin.send('patch', `/daily-reports/${report.id}`, { version: report.version, data: corrected })).body.data;
+  const during = (await admin.agent.get('/api/v1/mortality').expect(200)).body.data[0];
+  assert.equal(during.summary.mortalityCount, 2);
+  await admin.send('post', `/daily-reports/${report.id}/submit`, { version: report.version }, 422);
+  report = (await admin.send('post', `/daily-reports/${report.id}/submit`, { version: report.version, reason: 'Corrected recorded counts' })).body.data;
+  assert.equal(report.publishedRevision, 2);
+  const detail = (await admin.agent.get(`/api/v1/daily-reports/${report.id}`).expect(200)).body.data;
+  assert.equal(detail.revisions.length, 2);
+  assert.equal(detail.revisions[1].data.mortality, 2);
+  assert.equal(detail.revisions[0].data.mortality, 3);
+  assert.equal(detail.intents[0].eggDelta.standard, 10);
+  assert.equal(detail.intents[0].feedKgDelta, 0);
+  assert.equal(detail.intents[0].status, 'deferred');
+  const movements = await BirdMovement.find({ flockId: f.flock.id });
+  assert.equal(movements.reduce((sum, m) => sum + m.count, 0), 497);
+  assert.equal(await PublicationIntent.countDocuments({ reportId: report.id }), 2);
+  const snapshot = await ReportRevision.findOne({ reportId: report.id }); snapshot.reason = 'Overwrite attempt';
+  await assert.rejects(snapshot.save(), /append-only/);
+});
+
+test('draft blanks, invalid counts, ancestry, population gaps, reconciliation and archive protection are enforced', async () => {
+  const f = await hierarchyFixture(daysAgo(3));
+  let report = await createReport(f, today(), {});
+  await admin.send('post', `/daily-reports/${report.id}/submit`, { version: 1 }, 422);
+  await admin.send('patch', `/organization/flocks/${f.flock.id}/status`, { version: 1, archived: true }, 409);
+  for (const bad of [{ ...completeReport(), mortality: -1 }, { ...completeReport(), mortality: 501 }, { ...completeReport(), lightHours: 25 }, { ...completeReport(), eggs: { ...completeReport().eggs, jumbo: 1.5 } }]) await admin.send('patch', `/daily-reports/${report.id}`, { version: report.version, data: bad }, 422);
+  await admin.send('post', '/daily-reports', { flockId: f.flock.id, farmId: f.farmB.id, businessDate: today(), data: {} }, 422);
+  report = (await admin.send('patch', `/daily-reports/${report.id}`, { version: report.version, data: completeReport() })).body.data;
+  await admin.send('post', `/daily-reports/${report.id}/submit`, { version: report.version }, 409);
+  await admin.send('post', `/flocks/${f.flock.id}/population-adjustments`, { businessDate: today(), type: 'reconciliation', count: 490, reason: 'Counted opening after missing days' }, 201);
+  report = (await admin.send('post', `/daily-reports/${report.id}/submit`, { version: report.version })).body.data;
+  assert.equal(report.summary.closingBirds, 488);
+  assert.equal(report.summary.gap, false);
+  await admin.send('post', `/flocks/${f.flock.id}/population-adjustments`, { businessDate: today(), type: 'adjustment', count: 10, reason: 'Cannot change published opening' }, 409);
+});
+
+test('later reports block population corrections, descriptive revisions survive, and zero denominators stay unavailable', async () => {
+  const f = await hierarchyFixture(daysAgo(1));
+  let old = await createReport(f, daysAgo(1), completeReport(500));
+  old = (await admin.send('post', `/daily-reports/${old.id}/submit`, { version: old.version })).body.data;
+  let next = await createReport(f, today(), { ...completeReport(0), eggs: Object.fromEntries(Object.keys(completeReport().eggs).map((k) => [k, 0])) });
+  next = (await admin.send('post', `/daily-reports/${next.id}/submit`, { version: next.version })).body.data;
+  assert.equal(next.summary.openingBirds, 0);
+  assert.equal(next.summary.feedPerBirdG, null);
+  assert.equal(next.summary.productionPercent, null);
+  assert.equal(next.summary.mortalityPercent, null);
+  old = (await admin.send('post', `/daily-reports/${old.id}/return`, { version: old.version, reason: 'Review source' })).body.data;
+  old = (await admin.send('patch', `/daily-reports/${old.id}`, { version: old.version, data: completeReport(499) })).body.data;
+  await admin.send('post', `/daily-reports/${old.id}/submit`, { version: old.version, reason: 'Changed population' }, 409);
+  old = (await admin.send('patch', `/daily-reports/${old.id}`, { version: old.version, data: { ...completeReport(500), comments: 'Corrected description' } })).body.data;
+  await admin.send('post', `/daily-reports/${old.id}/submit`, { version: old.version, reason: 'Description only' });
+  assert.equal(await ReportRevision.countDocuments({ reportId: old.id }), 2);
+});
+
+test('measurements normalize grams, aggregate by sample size, preserve identities, and validate report links', async () => {
+  const f = await hierarchyFixture(daysAgo(1));
+  const create = async (averageWeight, unit, sampleSize, hours) => (await admin.send('post', '/bird-measurements', { flockId: f.flock.id, measuredAt: new Date(Date.now() - hours * 3600000).toISOString(), sampleSize, averageWeight, unit, notes: 'Weekly observation' }, 201)).body.data;
+  const a = await create(1.6, 'kg', 10, 3); const b = await create(1600, 'g', 20, 2); await create(800, 'g', 30, 1);
+  assert.notEqual(a.id, b.id); assert.equal(a.grams, b.grams);
+  const result = (await admin.agent.get(`/api/v1/bird-measurements?from=${daysAgo(1)}&to=${today()}&flockId=${f.flock.id}`).expect(200)).body;
+  assert.equal(result.meta.weightedAverageGrams, 1200);
+  assert.equal(result.data[0].differenceGrams, -800);
+  assert.equal(result.data[0].standard, null);
+  const report = await createReport(f, today(), { ...completeReport(), measurementId: a.id });
+  assert.equal(report.summary.measurement.grams, 1600);
+  await admin.send('patch', `/daily-reports/${report.id}`, { version: report.version, data: { ...completeReport(), measurementId: '000000000000000000000001' } }, 422);
+  await admin.send('post', '/bird-measurements', { flockId: f.flock.id, measuredAt: new Date().toISOString(), sampleSize: 0, averageWeight: 1600, unit: 'g' }, 422);
+});
+
+test('report lists/details/revisions and measurements enforce date windows and assigned farm scope', async () => {
+  const f = await hierarchyFixture(daysAgo(5));
+  const old = await createReport(f, daysAgo(4), {}, 'Historical draft for test');
+  await admin.send('post', '/daily-reports', { flockId: f.flock.id, businessDate: daysAgo(3), data: {} }, 403);
+  const staffAccount = await staff('farm_manager', 'reporter');
+  await admin.send('put', `/users/${staffAccount.record._id}/scope`, { siteIds: [], farmIds: [f.farmA.id], version: staffAccount.record.version });
+  const manager = await client('reporter@layerflow.test', changedPassword);
+  await admin.send('post', `/flocks/${f.flock.id}/population-adjustments`, { businessDate: daysAgo(4), type: 'placement', count: 10, reason: 'Authorized historical placement' }, 201);
+  const currentPopulation = (await manager.agent.get(`/api/v1/flocks/${f.flock.id}/population?date=${today()}`).expect(200)).body.data;
+  assert.equal(currentPopulation.openingBirds, 510);
+  assert.deepEqual(currentPopulation.movements, []); // Current balance does not expose old movement history.
+  await manager.agent.get(`/api/v1/daily-reports/${old.id}`).expect(403);
+  await manager.agent.get(`/api/v1/daily-reports?from=${daysAgo(4)}&to=${today()}`).expect(403);
+  await manager.send('post', '/daily-reports', { flockId: f.flock.id, businessDate: daysAgo(4), data: {} }, 403);
+  await manager.send('post', `/flocks/${f.flock.id}/population-adjustments`, { businessDate: today(), type: 'placement', count: 10, reason: 'No permission' }, 403);
+  const other = await f.create('flock', { name: 'Other farm flock', houseId: f.houseB.id, initialCount: 100, placementDate: today() });
+  const hidden = (await admin.send('post', '/daily-reports', { flockId: other.id, businessDate: today(), data: {} }, 201)).body.data;
+  await manager.agent.get(`/api/v1/daily-reports/${hidden.id}`).expect(404);
+  await manager.send('post', `/daily-reports/${hidden.id}/return`, { version: 1, reason: 'Manager cannot review' }, 403);
+  await manager.send('patch', `/daily-reports/${hidden.id}`, { version: 1, data: {} }, 404);
+  await manager.agent.get(`/api/v1/daily-reports?farmId=${f.farmB.id}`).expect(404);
+  await manager.agent.get(`/api/v1/daily-reports?flockId=${f.flock.id}&farmId=${f.farmB.id}`).expect(404);
+  assert.equal((await manager.agent.get('/api/v1/daily-reports').expect(200)).body.data.length, 0);
+  await admin.agent.get(`/api/v1/daily-reports?flockId=${f.flock.id}&farmId=${f.farmB.id}`).expect(422);
+  const oldWeight = (await admin.send('post', '/bird-measurements', { flockId: f.flock.id, measuredAt: `${daysAgo(4)}T06:00:00Z`, sampleSize: 10, averageWeight: 1600, unit: 'g' }, 201)).body.data;
+  await manager.agent.get(`/api/v1/bird-measurements/${oldWeight.id}`).expect(403);
+  const hiddenWeight = (await admin.send('post', '/bird-measurements', { flockId: other.id, measuredAt: new Date().toISOString(), sampleSize: 10, averageWeight: 1600, unit: 'g' }, 201)).body.data;
+  await manager.agent.get(`/api/v1/bird-measurements/${hiddenWeight.id}`).expect(404);
+});
+
+test('concurrent submissions commit exactly one revision, mortality effect, and publication intent', async () => {
+  const f = await hierarchyFixture(today()); const report = await createReport(f);
+  const clients = await Promise.all([client(owner.email, changedPassword), client(owner.email, changedPassword)]);
+  const results = await Promise.allSettled(clients.map((c) => c.send('post', `/daily-reports/${report.id}/submit`, { version: 1 })));
+  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
+  assert.match(results.find((r) => r.status === 'rejected').reason.message, /409/);
+  assert.equal(await ReportRevision.countDocuments({ reportId: report.id }), 1);
+  assert.equal(await PublicationIntent.countDocuments({ reportId: report.id }), 1);
+  assert.equal(await BirdMovement.countDocuments({ reportId: report.id }), 1);
+});
+
+test('opening movement migration backfills existing flocks once and population adjustments preserve an append-only trail', async () => {
+  const f = await hierarchyFixture(today());
+  await BirdMovement.deleteMany({ flockId: f.flock.id });
+  await Migration.deleteOne({ _id: '003-reports-and-population' });
+  await applyMigrations(config); await applyMigrations(config);
+  assert.equal(await BirdMovement.countDocuments({ flockId: f.flock.id, type: 'opening' }), 1);
+  await admin.send('post', `/flocks/${f.flock.id}/population-adjustments`, { businessDate: today(), type: 'placement', count: 10, reason: 'Additional authorized placement' }, 201);
+  await admin.send('post', `/flocks/${f.flock.id}/population-adjustments`, { businessDate: today(), type: 'adjustment', count: -5, reason: 'Physical count correction' }, 201);
+  const context = (await admin.agent.get(`/api/v1/flocks/${f.flock.id}/population?date=${today()}`).expect(200)).body.data;
+  assert.equal(context.availableBirds, 505);
+  assert.equal(context.movements.length, 2);
+  await admin.send('post', `/flocks/${f.flock.id}/population-adjustments`, { businessDate: today(), type: 'placement', count: 1000, reason: 'Exceeds capacity' }, 422);
+  assert.equal(await BirdMovement.countDocuments({ flockId: f.flock.id }), 3);
+});
+
+test('population changes leave invalidated drafts readable for correction and capacity follows the movement balance', async () => {
+  const f = await hierarchyFixture(today());
+  let report = await createReport(f, today(), completeReport(490));
+  await admin.send('post', `/flocks/${f.flock.id}/population-adjustments`, { businessDate: today(), type: 'adjustment', count: -20, reason: 'Correct physical population' }, 201);
+  const readable = (await admin.agent.get(`/api/v1/daily-reports/${report.id}`).expect(200)).body.data;
+  assert.equal(readable.summary.invalidPopulation, true);
+  report = (await admin.send('patch', `/daily-reports/${report.id}`, { version: report.version, data: completeReport(2) })).body.data;
+  report = (await admin.send('post', `/daily-reports/${report.id}/submit`, { version: report.version })).body.data;
+  await admin.send('patch', `/organization/houses/${f.houseA.id}`, { version: 1, name: f.houseA.name, capacity: 478 });
+  await admin.send('patch', `/organization/flocks/${f.flock.id}`, { version: 1, name: 'Renamed with lower current population', birdType: 'Layer' });
+  await admin.send('patch', `/organization/flocks/${f.flock.id}/status`, { version: 2, archived: true });
+  await admin.send('post', `/daily-reports/${report.id}/return`, { version: report.version, reason: 'Archived context blocks new work' }, 409);
+});
+
+test('backdated first submissions cannot change the opening of a later published report', async () => {
+  const f = await hierarchyFixture(daysAgo(1));
+  await admin.send('post', `/flocks/${f.flock.id}/population-adjustments`, { businessDate: today(), type: 'reconciliation', count: 500, reason: 'Opening physically counted' }, 201);
+  let current = await createReport(f);
+  current = (await admin.send('post', `/daily-reports/${current.id}/submit`, { version: 1 })).body.data;
+  const earlier = await createReport(f, daysAgo(1), completeReport(2));
+  await admin.send('post', `/daily-reports/${earlier.id}/submit`, { version: earlier.version }, 409);
+  assert.equal(await ReportRevision.countDocuments({ reportId: earlier.id }), 0);
+  const intact = (await admin.agent.get(`/api/v1/daily-reports/${current.id}`).expect(200)).body.data;
+  assert.equal(intact.summary.closingBirds, current.publishedSummary.closingBirds);
 });

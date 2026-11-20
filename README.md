@@ -1,10 +1,11 @@
 # LayerFlow
 
-A poultry-management Web Programming university course project using React, Express, Node.js, and MongoDB. **MERN Phases 0-3 are implemented:** backend foundation, real authentication, staff administration, editable role permissions, persistent farm hierarchy, and scoped staff assignments. Existing farm-operation screens remain an explicit mock demo until their backend phases are connected.
+A poultry-management Web Programming university course project using React, Express, Node.js, and MongoDB. **MERN Phases 0-4 are implemented:** backend foundation, real authentication, staff administration, editable role permissions, persistent farm hierarchy, scoped staff assignments, daily reports and revisions, mortality, population tracking, and bird measurements. Clinical, inventory, sales, and other later modules remain integration-pending in API mode; the historical demo is available through explicit mock mode.
 
 - [Product requirements and phased plan](LayerFlow_MERN_PRD.md)
 - [Implementation log, decisions, data dictionary, API contract, and verification](docs/MERN_PHASE_0_2_IMPLEMENTATION.md)
 - [Phase 3 implementation, API contract, demo data, and verification](docs/MERN_PHASE_3_IMPLEMENTATION.md)
+- [Phase 4 reports, population, measurements, and publication contract](docs/MERN_PHASE_4_IMPLEMENTATION.md)
 - [Exact default role/permission matrix](docs/ACCESS_MATRIX.md)
 - [Progress checklist](PROGRESS.md)
 
@@ -84,7 +85,19 @@ The API listens on loopback. `/api/v1/health` reports process state; `/api/v1/re
 6. Role permission edits affect existing sessions on their next protected API request. Deactivation, password reset, and role assignment invalidate previous sessions immediately.
 7. Use **My profile → Change password** for your own password. Use the Users reset action for other accounts.
 
-Open **Organization** to create Sites > Farms > Houses > Flocks. One active flock is permitted per house. In **Users**, assign sites or farms to staff with assigned-scope roles. Assignment changes end their existing sessions; sign in again. The top-bar working-area selector displays only accessible active records. Live clinical/inventory/report pages show their pending integration phase. They do not display local mock records to real authenticated accounts. User/role administration requires company scope and its corresponding permissions; assigned operational roles do not gain account-administration access.
+Open **Organization** to create Sites > Farms > Houses > Flocks. One active flock is permitted per house. In **Users**, assign sites or farms to staff with assigned-scope roles. Assignment changes end their existing sessions; sign in again. The top-bar working-area selector displays only accessible active records. Live clinical/inventory/sales pages show their pending integration phase. They do not display local mock records to real authenticated accounts. User/role administration requires company scope and its corresponding permissions; assigned operational roles do not gain account-administration access.
+
+## Daily reporting and bird measurements
+
+1. Record a flock sample under **Bird parameters** in g or kg. Weight is normalized to grams; standards remain unconfigured.
+2. Open **Daily reports**, choose a flock/date, enter values, and save a draft. Drafts can be incomplete; submission requires explicit egg, mortality, feed, water, and light values, including zeros.
+3. Opening birds are calculated by the API. If earlier days are missing, the Owner can record a counted-opening reconciliation with a reason from the report form.
+4. Open the saved report and submit it. A reviewer can return it with a reason; the manager edits and resubmits it with a correction reason. Numbered snapshots preserve previous submissions.
+5. **Mortality** shows positive mortality from the effective published revision. Health concerns with zero mortality remain in Daily reports.
+
+Staff reads are limited to today/yesterday unless their role grants history. Older report writes additionally need correction permission and a reason. Farm scope is checked on lists, details, revisions, and writes.
+
+**Phase 4 is an interim publication gate:** report submission records source-keyed egg/feed posting intents. Actual stock balances and negative-stock correction checks arrive with Phases 6/8; submission currently does not deduct feed or create saleable egg stock. See the Phase 4 implementation log for the exact contract.
 
 ## Commands
 
@@ -102,7 +115,7 @@ Open **Organization** to create Sites > Farms > Houses > Flocks. One active floc
 | `npm run preview` | Preview frontend bundle; a real API must be served/proxied separately |
 | `npm test` | Existing browser-mock workflow checks |
 | `npm run test:server` | Actual temporary MongoDB/API/security integration checks |
-| `npm run test:browser` | Headless Edge identity/admin/hierarchy/scope workflow with temporary API/frontend/database |
+| `npm run test:browser` | Headless Edge identity/admin/hierarchy/report/measurement workflow with temporary API/frontend/database |
 | `npm run docs:access` | Regenerate the default access matrix from the seed catalog |
 
 Verification commands never reset your configured application database. They create independent temporary test databases. Browser screenshots are saved under ignored `.data/verification/`.

@@ -1,4 +1,4 @@
-export const LIVE_PAGE_KEYS = new Set(['dashboard', 'users', 'roles', 'profile', 'organization', 'sites', 'farms', 'houses', 'flocks']);
+export const LIVE_PAGE_KEYS = new Set(['dashboard', 'users', 'roles', 'profile', 'organization', 'sites', 'farms', 'houses', 'flocks', 'daily-reports', 'mortality', 'bird-parameters']);
 export const MERN_PHASE = {
   organization: 3, sites: 3, farms: 3, houses: 3, flocks: 3,
   'daily-reports': 4, mortality: 4, 'bird-parameters': 4,

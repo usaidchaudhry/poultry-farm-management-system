@@ -2,9 +2,10 @@ import { mongoose, transaction } from '../config/database.js';
 import { Organization, Role, SecurityGuard, Migration, models } from '../modules/access/models.js';
 import { hierarchyModels } from '../modules/organization/models.js';
 import { DEFAULT_ROLES } from '../modules/access/catalog.js';
+import { reportModels, openingMovement } from '../modules/reports/models.js';
 
 export async function applyMigrations(config) {
-  for (const model of [...models, ...Object.values(hierarchyModels)]) {
+  for (const model of [...models, ...Object.values(hierarchyModels), ...reportModels]) {
     try { await model.createCollection(); } catch (error) { if (error.code !== 48) throw error; }
     await model.createIndexes();
   }
@@ -19,5 +20,11 @@ export async function applyMigrations(config) {
   });
   // Collection/index creation above is repeatable, including existing installs.
   await Migration.updateOne({ _id: '002-organization-hierarchy' }, { $setOnInsert: { appliedAt: new Date() } }, { upsert: true });
+  await transaction(async (session) => {
+    await SecurityGuard.updateOne({ _id: 'access-control' }, { $inc: { revision: 1 } }, { session });
+    if (await Migration.exists({ _id: '003-reports-and-population' }).session(session)) return;
+    for (const flock of await hierarchyModels.flock.find().session(session)) await openingMovement(flock, session);
+    await Migration.create([{ _id: '003-reports-and-population', appliedAt: new Date() }], { session });
+  });
   return mongoose.connection;
 }

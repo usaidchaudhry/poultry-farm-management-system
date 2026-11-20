@@ -1,4 +1,5 @@
 import { organizationRouter, assignScope } from './modules/organization/routes.js';
+import { reportRouter, populationRouter, measurementRouter, controller as reportController } from './modules/reports/routes.js';
 import { permission } from './middleware/auth.js';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
@@ -52,6 +53,10 @@ export function createApp(config) {
   app.get('/api/v1/permissions', companyScope, anyPermission(P.ROLES_VIEW, P.ROLES_MANAGE), (req, res) => res.json({ data: ALL_PERMISSIONS.filter((code) => code !== P.NOTIFICATIONS_MANAGE) }));
   app.put('/api/v1/users/:id/scope', companyScope, permission(P.USERS_MANAGE, P.ORGANIZATION_MANAGE), assignScope);
   app.use('/api/v1/organization', organizationRouter);
+  app.use('/api/v1/daily-reports', reportRouter);
+  app.get('/api/v1/mortality', permission('mortality.view'), reportController.mortality);
+  app.use('/api/v1/flocks', populationRouter);
+  app.use('/api/v1/bird-measurements', measurementRouter);
   app.use((req, res, next) => next(new AppError(404, 'NOT_FOUND', 'Endpoint not found.')));
   app.use(errorHandler);
   return app;

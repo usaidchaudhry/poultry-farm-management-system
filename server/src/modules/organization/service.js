@@ -5,9 +5,14 @@ import { audit } from '../access/audit.js';
 import { assertVersion } from '../../lib/validation.js';
 import { AppError, notFound, denied } from '../../lib/errors.js';
 import { P } from '../access/catalog.js';
+import { DailyReport, BirdMovement, openingMovement } from '../reports/models.js';
 
 export const kinds = ['site', 'farm', 'house', 'flock'];
 const parentKind = (kind) => kinds[kinds.indexOf(kind) - 1];
+async function currentBirdCount(flock, session) {
+  const movements = await BirdMovement.find({ flockId: flock._id }).select('count').session(session);
+  return movements.length ? movements.reduce((sum, movement) => sum + movement.count, 0) : flock.initialCount;
+}
 export function publicEntity(record) {
   const { _id, organizationId, nameKey, ...data } = record.toObject();
   for (const key of ['siteId', 'farmId', 'houseId']) if (data[key]) data[key] = String(data[key]);
@@ -61,6 +66,7 @@ export async function mutate(caller, kind, id, input, requestId, action) {
       assertVersion(record, input.version); before = publicEntity(record);
       if (action === 'status') {
         if (input.archived) {
+          if (kind === 'flock' && await DailyReport.exists({ flockId: record._id, status: { $in: ['draft', 'returned'] } }).session(session)) throw new AppError(409, 'UNSUBMITTED_WORK', 'Submit unfinished reports before archiving this flock.');
           const child = kinds[kinds.indexOf(kind) + 1];
           if (child && await M[child].exists({ [`${kind}Id`]: record._id, status: 'active' }).session(session)) throw new AppError(409, 'ACTIVE_CHILDREN', 'Archive active children first.');
         } else await activeParent(actor, kind, record[`${parentKind(kind)}Id`], session);
@@ -74,13 +80,14 @@ export async function mutate(caller, kind, id, input, requestId, action) {
     record.nameKey = record.name.normalize('NFKC').toLowerCase();
     if (kind === 'flock' && record.status === 'active') {
       const house = await activeParent(actor, kind, record.houseId, session);
-      if (house.capacity && record.initialCount > house.capacity) throw new AppError(422, 'CAPACITY_EXCEEDED', 'Birds placed exceed house capacity.');
+      if (house.capacity && await currentBirdCount(record, session) > house.capacity) throw new AppError(422, 'CAPACITY_EXCEEDED', 'Bird population exceeds house capacity.');
     }
     if (kind === 'house' && record.capacity) {
       const flock = await M.flock.findOne({ houseId: record._id, status: 'active' }).session(session);
-      if (flock && flock.initialCount > record.capacity) throw new AppError(422, 'CAPACITY_EXCEEDED', 'Capacity is below the active flock placement count.');
+      if (flock && await currentBirdCount(flock, session) > record.capacity) throw new AppError(422, 'CAPACITY_EXCEEDED', 'Capacity is below the active flock population.');
     }
     await record.save({ session });
+    if (kind === 'flock' && action === 'create') await openingMovement(record, session);
     const after = publicEntity(record);
     await audit(actor, `organization.${kind}.${action}`, kind, record._id, { before, after }, requestId, session);
     return after;
