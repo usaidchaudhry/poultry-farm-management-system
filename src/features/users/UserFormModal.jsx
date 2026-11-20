@@ -10,9 +10,10 @@ import { ApiError, getErrorMessage } from '../../services/apiError.js';
 import { email as emailRule, minLength, required } from '../../utils/validators.js';
 import RolePreview from './RolePreview.jsx';
 import './users.css';
+import { config } from '../../utils/config.js';
 
 /*
-  mode 'create': name, email, temporary password, role, active switch
+  mode 'create': name, email, temporary password, active switch (role only in mock mode)
   mode 'edit':   name and email only (role and active status have their own actions in the table)
   Parent should give this a changing `key` each time it opens so the form starts fresh.
   onSubmit(values) is async and throws an ApiError if the server refuses (e.g. duplicate email).
@@ -38,7 +39,7 @@ export default function UserFormModal({ open, mode, user, onClose, onSubmit }) {
   const validate = () => ({
     name: required(values.name, 'Full name') || minLength(values.name, 2, 'Full name'),
     email: required(values.email, 'Email') || emailRule(values.email),
-    password: isCreate ? required(values.password, 'Password') || minLength(values.password, 8, 'Password') : '',
+    password: isCreate ? required(values.password, 'Password') || minLength(values.password, config.isMock ? 8 : 12, 'Password') : '',
   });
 
   const handleSubmit = async (event) => {
@@ -63,7 +64,7 @@ export default function UserFormModal({ open, mode, user, onClose, onSubmit }) {
       open={open}
       onClose={saving ? undefined : onClose}
       title={isCreate ? 'Add user' : 'Edit user'}
-      description={isCreate ? 'Create an account and optionally assign a role.' : 'Update the name or email of this account.'}
+      description={isCreate ? config.isMock ? 'Create a mock account and optionally assign a role.' : 'Create an unassigned account with a temporary password. Assign access separately.' : 'Update the name or email of this account.'}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
@@ -81,20 +82,21 @@ export default function UserFormModal({ open, mode, user, onClose, onSubmit }) {
               label="Temporary password"
               type="password"
               required
-              hint="At least 8 characters. Share it with the user securely."
+              hint={`At least ${config.isMock ? 8 : 12} characters. Share it with the user securely.`}
+              maxLength={128}
               value={values.password}
               onChange={setField('password')}
               error={errors.password}
               autoComplete="new-password"
             />
-            <Select
+            {config.isMock && <><Select
               label="Role"
               placeholder="Unassigned (no access)"
               options={ROLE_OPTIONS}
               value={values.role}
               onChange={setField('role')}
             />
-            <RolePreview role={values.role} />
+            <RolePreview role={values.role} /></>}
             <Switch
               label={values.isActive ? 'Account is active' : 'Account is inactive'}
               checked={values.isActive}

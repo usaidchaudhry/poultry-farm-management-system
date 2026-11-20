@@ -2,7 +2,7 @@ import { ROLES } from '../../config/roles.js';
 import { ApiError } from '../apiError.js';
 import { delay } from './delay.js';
 import { toPublicUser, usersStore } from './mockUsersStore.js';
-import { workService } from '../workService.js';
+import { workService } from './mockWorkService.js';
 
 const VALID_ROLES = Object.values(ROLES);
 

@@ -25,6 +25,7 @@ export default function ProtectedRoute({ permission, children }) {
     );
   }
   if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />;
+  if (user.mustChangePassword) return <Navigate to="/change-password" replace />;
   if (!user.role) return <Navigate to="/pending-access" replace />;
   if (permission && !hasPermission(permission)) return <AccessDeniedPage />;
   return children || <Outlet />;

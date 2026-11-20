@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 const storage = new Map();
 globalThis.localStorage = { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)), removeItem: (key) => storage.delete(key), clear: () => storage.clear() };
-const { workService } = await import('../src/services/workService.js');
+const { workService } = await import('../src/services/mock/mockWorkService.js');
 const owner = { id: 'u1', role: 'owner' };
 const farmManager = { id: 'u3', role: 'farm_manager' };
 const operator = { id: 'u4', role: 'operation_manager' };

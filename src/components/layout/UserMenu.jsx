@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ROLE_INFO } from '../../config/roles.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
+import { getErrorMessage } from '../../services/apiError.js';
 import Icon from '../common/Icon.jsx';
 import './layout.css';
 
@@ -32,13 +33,13 @@ export default function UserMenu() {
   }, [open]);
 
   if (!user) return null;
-  const roleLabel = ROLE_INFO[user.role]?.label || user.role;
+  const roleLabel = user.roleLabel || ROLE_INFO[user.role]?.label || user.role;
 
   const handleLogout = async () => {
     setOpen(false);
-    await logout();
-    toast.info('You have been signed out.');
-    navigate('/login', { replace: true });
+    try {
+      await logout(); toast.info('You have been signed out.'); navigate('/login', { replace: true });
+    } catch (error) { toast.error(getErrorMessage(error, 'Could not sign out. Please try again.')); }
   };
 
   return (

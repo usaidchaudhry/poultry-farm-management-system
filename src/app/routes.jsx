@@ -24,6 +24,12 @@ import SalesPage from '../pages/work/SalesPage.jsx';
 import { PERMISSIONS } from '../config/permissions.js';
 import SetupCheckPage from '../pages/setup/SetupCheckPage.jsx';
 import ProtectedRoute from './ProtectedRoute.jsx';
+import { config } from '../utils/config.js';
+import { LIVE_PAGE_KEYS } from '../config/integration.js';
+import LiveDashboardPage from '../pages/dashboard/LiveDashboardPage.jsx';
+import ChangePasswordPage from '../pages/auth/ChangePasswordPage.jsx';
+import RolesPage from '../pages/roles/RolesPage.jsx';
+import IntegrationPendingPage from '../pages/common/IntegrationPendingPage.jsx';
 
 /*
   Pages that are really built. Anything in config/modules.js that is NOT listed here
@@ -31,9 +37,10 @@ import ProtectedRoute from './ProtectedRoute.jsx';
   add one line, e.g.  users: UsersPage
 */
 const PAGE_REGISTRY = {
-  dashboard: DashboardHomePage,
+  dashboard: config.isMock ? DashboardHomePage : LiveDashboardPage,
   'design-system': DesignSystemPage,
   users: UsersPage,
+  roles: RolesPage,
   organization: OrganizationPage,
   sites: () => <OrgListPage kind="site" />,
   farms: () => <OrgListPage kind="farm" />,
@@ -59,7 +66,9 @@ function renderPage(page) {
   const Page = PAGE_REGISTRY[page.key];
   return (
     <ProtectedRoute permission={page.permission}>
-      {Page ? <Page /> : <ModulePlaceholderPage page={page} />}
+      {!config.isMock && !LIVE_PAGE_KEYS.has(page.key) && !page.isDeveloperPage
+        ? <IntegrationPendingPage page={page} />
+        : Page ? <Page /> : <ModulePlaceholderPage page={page} />}
     </ProtectedRoute>
   );
 }
@@ -71,14 +80,15 @@ export default function AppRoutes() {
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/pending-access" element={<PendingAccessPage />} />
+        <Route path="/change-password" element={<ChangePasswordPage />} />
       </Route>
-      <Route path="/setup-check" element={<SetupCheckPage />} />
+      {config.isDev && <Route path="/setup-check" element={<SetupCheckPage />} />}
 
       {/* Signed-in area */}
       <Route element={<ProtectedRoute />}>
         <Route element={<DashboardLayout />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          {ALL_PAGES.map((page) => (
+          {ALL_PAGES.filter((page) => !page.isDeveloperPage || config.isDev).map((page) => (
             <Route key={page.path} path={page.path} element={renderPage(page)} />
           ))}
           <Route path="*" element={<NotFoundPage />} />

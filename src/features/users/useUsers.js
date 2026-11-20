@@ -1,35 +1,24 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getErrorMessage } from '../../services/apiError.js';
 import { userService } from '../../services/userService.js';
 
-// Loads the user list and exposes loading / error state plus helpers to update the list locally.
-export default function useUsers() {
+export default function useUsers(query = {}) {
   const [users, setUsers] = useState([]);
+  const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
+  const sequence = useRef(0);
+  const key = JSON.stringify(query);
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    const request = ++sequence.current;
+    setLoading(true); setError(null);
     try {
-      setUsers(await userService.listUsers());
-    } catch (err) {
-      setError(getErrorMessage(err, 'Could not load users.'));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  // Replace an existing user in the list, or add a new one
-  const upsert = useCallback((user) => {
-    setUsers((current) =>
-      current.some((item) => item.id === user.id) ? current.map((item) => (item.id === user.id ? user : item)) : [...current, user]
-    );
-  }, []);
-
-  return { users, loading, error, reload: load, upsert };
+      const result = await userService.listUsers(JSON.parse(key));
+      if (request === sequence.current) { setUsers(result.data); setMeta(result.meta); }
+    } catch (failure) {
+      if (request === sequence.current) { setUsers([]); setMeta(null); setError(getErrorMessage(failure, 'Could not load users.')); }
+    } finally { if (request === sequence.current) setLoading(false); }
+  }, [key]);
+  useEffect(() => { load(); return () => { sequence.current += 1; }; }, [load]);
+  return { users, meta, loading, error, reload: load };
 }

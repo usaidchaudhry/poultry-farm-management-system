@@ -5,6 +5,8 @@ import { getNavigation } from '../../config/navigation.js';
 import { ROLE_INFO } from '../../config/roles.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import './ProfilePage.css';
+import { Link } from 'react-router-dom';
+import { config } from '../../utils/config.js';
 
 // Read-only view of the signed-in account and what it can access.
 export default function ProfilePage() {
@@ -18,12 +20,13 @@ export default function ProfilePage() {
         <dl className="profile__details">
           <div><dt>Name</dt><dd>{user.name}</dd></div>
           <div><dt>Email</dt><dd>{user.email}</dd></div>
-          <div><dt>Role</dt><dd>{role?.label}</dd></div>
+          <div><dt>Role</dt><dd>{user.roleLabel || role?.label}</dd></div>
           <div><dt>Status</dt><dd><StatusBadge status={user.isActive ? 'active' : 'inactive'} /></dd></div>
         </dl>
       </Card>
 
-      <Card title="Your access" subtitle={`${role?.description}.`}>
+      {!config.isMock && <Card title="Password"><Link to="/change-password">Change password</Link></Card>}
+      <Card title="Your access" subtitle={role?.description || 'Access is determined by your assigned permissions.'}>
         <div className="profile__areas">
           {areas.map((area) => (
             <Badge key={area} tone="primary">{area}</Badge>

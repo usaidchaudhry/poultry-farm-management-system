@@ -1,15 +1,25 @@
-import { mockAuthService } from './mock/mockAuthService.js';
+import api, { setCsrfToken } from './api.js';
+import { config } from '../utils/config.js';
+async function mock() { return (await import('./mock/mockAuthService.js')).mockAuthService; }
 
-/*
-  The UI imports ONLY this file for authentication.
-  When the Express API exists, replace the body of each function with an Axios call
-  (using `api` from ./api.js) and keep the same inputs and return shapes:
-    login({ email, password })  -> { user, token }
-    getCurrentUser(userId)      -> user
-    logout()                    -> void
-*/
 export const authService = {
-  login: (credentials) => mockAuthService.login(credentials),
-  getCurrentUser: (userId) => mockAuthService.getCurrentUser(userId),
-  logout: () => mockAuthService.logout(),
+  async login(credentials) {
+    if (config.isMock) return (await mock()).login(credentials);
+    const { data } = await api.post('/auth/login', credentials);
+    setCsrfToken(data.data.csrfToken);
+    return { user: data.data.user };
+  },
+  async getCurrentUser(mockUserId) {
+    if (config.isMock) return (await mock()).getCurrentUser(mockUserId);
+    return (await api.get('/auth/me')).data.data;
+  },
+  async logout() {
+    if (config.isMock) return (await mock()).logout();
+    await api.post('/auth/logout'); setCsrfToken(undefined);
+  },
+  async changePassword(values) {
+    const { data } = await api.post('/auth/change-password', values);
+    setCsrfToken(data.data.csrfToken);
+    return data.data.user;
+  },
 };

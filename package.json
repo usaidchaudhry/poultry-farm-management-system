@@ -1,5 +1,5 @@
 {
-  "name": "poultry-management-system",
+  "name": "layerflow",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -7,7 +7,16 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test"
+    "test": "node --test tests/*.mjs",
+    "dev:server": "npm --prefix server run dev",
+    "start:server": "npm --prefix server start",
+    "db:dev": "npm --prefix server run db:dev",
+    "db:bootstrap": "npm --prefix server run bootstrap",
+    "db:migrate": "npm --prefix server run migrate",
+    "db:check": "npm --prefix server run check:db",
+    "test:server": "npm --prefix server test",
+    "test:browser": "npm --prefix server run test:browser",
+    "docs:access": "npm --prefix server run docs:access"
   },
   "dependencies": {
     "axios": "^1.7.9",

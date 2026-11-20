@@ -1,118 +1,90 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { authService } from '../services/authService.js';
+import { getErrorMessage } from '../services/apiError.js';
+import { config } from '../utils/config.js';
 
-/*
-  Shared authentication state.
-    user            current user (with permission codes) or null
-    isAuthenticated true when a user is signed in
-    isInitializing  true while a saved session is being checked on page load
-    sessionNotice   message to show on the login page (e.g. session ended)
-    login / logout / refreshUser / expireSession
-    hasPermission(code), hasAnyPermission(codes)
-*/
 const AuthContext = createContext(null);
 const STORAGE_KEY = 'pms.session.v2';
-
-function readSession() {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeSession(session) {
-  try {
-    if (session) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-    else sessionStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // storage unavailable: the session lasts until the page reloads
-  }
-}
+function mockSession() { try { return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || 'null'); } catch { return null; } }
+function saveMockSession(value) { try { value ? sessionStorage.setItem(STORAGE_KEY, JSON.stringify(value)) : sessionStorage.removeItem(STORAGE_KEY); } catch { /* Storage can be unavailable. */ } }
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [isInitializing, setIsInitializing] = useState(() => Boolean(readSession()));
+  const [isInitializing, setIsInitializing] = useState(true);
   const [sessionNotice, setSessionNotice] = useState('');
+  const generation = useRef(0);
 
-  // On page load: restore a saved session by asking the service who the user is.
   useEffect(() => {
-    const saved = readSession();
-    if (!saved) return undefined;
     let cancelled = false;
-
-    authService
-      .getCurrentUser(saved.userId)
-      .then((current) => {
-        if (!cancelled) setUser(current);
+    const saved = config.isMock ? mockSession() : null;
+    if (!config.isMock) saveMockSession(null);
+    if (config.isMock && !saved) { setIsInitializing(false); return undefined; }
+    authService.getCurrentUser(saved?.userId)
+      .then((current) => { if (!cancelled) setUser(current); })
+      .catch((error) => {
+        if (cancelled) return;
+        if (config.isMock) saveMockSession(null);
+        if (error.status !== 401) setSessionNotice(getErrorMessage(error, 'Could not restore your session.'));
       })
-      .catch(() => {
-        writeSession(null);
-        if (!cancelled) setSessionNotice('Your session has ended. Please sign in again.');
-      })
-      .finally(() => {
-        if (!cancelled) setIsInitializing(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
+      .finally(() => { if (!cancelled) setIsInitializing(false); });
+    return () => { cancelled = true; };
   }, []);
 
-  // Throws an ApiError on failure so the login form can show the message.
   const login = useCallback(async (credentials) => {
-    const { user: signedIn, token } = await authService.login(credentials);
-    writeSession({ userId: signedIn.id, token });
-    setSessionNotice('');
-    setUser(signedIn);
-    return signedIn;
+    const result = await authService.login(credentials);
+    generation.current += 1;
+    if (config.isMock) saveMockSession({ userId: result.user.id, token: result.token });
+    setUser(result.user); setSessionNotice(''); return result.user;
+  }, []);
+
+  const expireSession = useCallback(() => {
+    generation.current += 1;
+    if (config.isMock) saveMockSession(null);
+    setUser(null); setSessionNotice('Your session has expired. Please sign in again.');
   }, []);
 
   const logout = useCallback(async () => {
-    try {
-      await authService.logout();
-    } finally {
-      writeSession(null);
-      setSessionNotice('');
-      setUser(null);
-    }
+    await authService.logout();
+    generation.current += 1;
+    if (config.isMock) saveMockSession(null);
+    setUser(null); setSessionNotice('');
   }, []);
 
-  // Call when the API reports an expired or invalid session (HTTP 401).
-  const expireSession = useCallback(() => {
-    writeSession(null);
-    setUser(null);
-    setSessionNotice('Your session has expired. Please sign in again.');
-  }, []);
-
-  // Reload the current user (e.g. after editing your own profile).
   const refreshUser = useCallback(async () => {
-    const saved = readSession();
-    if (!saved) return;
+    const currentGeneration = generation.current;
     try {
-      setUser(await authService.getCurrentUser(saved.userId));
-    } catch {
-      expireSession();
+      const current = await authService.getCurrentUser(config.isMock ? mockSession()?.userId : undefined);
+      if (currentGeneration === generation.current) setUser(current);
+    } catch (error) {
+      if (currentGeneration === generation.current && error.status === 401) expireSession();
     }
   }, [expireSession]);
 
-  const value = useMemo(() => {
-    const permissions = user?.permissions || [];
-    return {
-      user,
-      isAuthenticated: Boolean(user),
-      isInitializing,
-      sessionNotice,
-      login,
-      logout,
-      refreshUser,
-      expireSession,
-      hasPermission: (code) => permissions.includes(code),
-      hasAnyPermission: (codes) => codes.some((code) => permissions.includes(code)),
-    };
-  }, [user, isInitializing, sessionNotice, login, logout, refreshUser, expireSession]);
+  const changePassword = useCallback(async (values) => {
+    const current = await authService.changePassword(values);
+    generation.current += 1; setUser(current); return current;
+  }, []);
 
+  useEffect(() => {
+    window.addEventListener('layerflow:session-expired', expireSession);
+    window.addEventListener('layerflow:access-changed', refreshUser);
+    return () => { window.removeEventListener('layerflow:session-expired', expireSession); window.removeEventListener('layerflow:access-changed', refreshUser); };
+  }, [expireSession, refreshUser]);
+
+  useEffect(() => {
+    if (!user || config.isMock) return undefined;
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshUser(); };
+    document.addEventListener('visibilitychange', onVisible);
+    const timer = setInterval(onVisible, 60_000);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
+  }, [Boolean(user), refreshUser]);
+
+  const value = useMemo(() => ({
+    user, isAuthenticated: Boolean(user), isInitializing, sessionNotice,
+    login, logout, refreshUser, expireSession, changePassword,
+    hasPermission: (code) => (user?.permissions || []).includes(code),
+    hasAnyPermission: (codes) => codes.some((code) => (user?.permissions || []).includes(code)),
+  }), [user, isInitializing, sessionNotice, login, logout, refreshUser, expireSession, changePassword]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

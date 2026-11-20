@@ -95,4 +95,20 @@ Phase 5 assumptions and API boundary are documented in `ASSUMPTIONS.md`.
 - [x] Production build and service workflow tests.
 - [ ] Browser visual, responsive, and accessibility pass, plus screenshots. The browser access host was unavailable during this session.
 
-All phases above use browser-persisted mock services because this repository has no Express API. Attachment uploads, server exports, and API-enforced date restrictions wait for backend endpoints. See `ASSUMPTIONS.md` for details.
+The frontend phase entries above describe the original browser-persisted mock implementation. Live MERN progress is tracked separately below. Attachment uploads, server exports, and operational API date restrictions remain later-phase work. See `ASSUMPTIONS.md` for the historical frontend assumptions.
+
+## MERN implementation — LayerFlow (20 November 2026)
+
+Plan: `LayerFlow_MERN_PRD.md`. Detailed implementation log, data dictionary, decisions, contracts, setup, and verification: `docs/MERN_PHASE_0_2_IMPLEMENTATION.md`. These phase numbers do not replace the historical frontend phases above.
+
+- [x] MERN Phase 0: baseline/service inventory, adopted demonstration defaults, initial data dictionary, role/permission matrix, date/API conventions, and database/deployment choice.
+- [x] MERN Phase 1: Express/Mongoose foundation, configuration, safe errors/logging, MongoDB sessions, CSRF/origin protection, validation, login throttling, security headers, transaction/policy/idempotency helpers, repeatable indexes/migration, and persistent development replica-set helper.
+- [x] MERN Phase 2: environment-driven one-time Owner bootstrap, hashed passwords, mandatory password change, login/logout/me, versioned user administration, separate role assignment, activation/reset/session revocation, dynamic role/permission editor, protected recovery controls, grant-subset safeguards, and server audit events.
+- [x] Live authentication/Users/Roles/Profile integrated with existing React components; API mode is default and later modules show integration-pending views.
+- [x] Historical mock mode remains explicit; operational mock implementation moved under `src/services/mock/` and live facades prohibit fallback.
+- [x] Actual MongoDB/API checks include transaction rollback, immediate revocation, concurrent administrator safeguards, and disk-backed database/session persistence across MongoDB restart.
+- [x] Headless clean-browser checks cover forced password change, API restart/session restoration, role/user administration, pending access, permission revocation, logout, and a phone-width user list.
+- [x] Final verification: 17 backend checks, 9 original mock checks, browser workflow, production build, documentation links, and 39 server-file syntax checks passed. Local screenshots were reviewed; details and commands are in the implementation log.
+- [ ] MERN Phase 3: persistent organization hierarchy, archive/occupancy rules, user site/farm assignment, and live farm selection.
+
+Boundary: no public signup or default live account password. Configure private server environment values and run the bootstrap command described in README. Site/farm data and operational modules remain Phase 3 onward; their historical mock completion does not mean full-stack completion.

@@ -3,7 +3,7 @@ import { hasCompanyWideScope } from '../../config/roles.js';
 import { ApiError } from '../apiError.js';
 import { delay } from './delay.js';
 import { orgStore } from './mockOrgStore.js';
-import { workService } from '../workService.js';
+import { workService } from './mockWorkService.js';
 
 /*
   Describes each level of the hierarchy.

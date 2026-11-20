@@ -113,6 +113,12 @@ export const MODULES = [
     description: 'Read-only record of important changes.',
     capabilities: ['Audit table with filters', 'Detail view with before and after values'],
   },
+  {
+    key: 'roles', label: 'Roles and permissions', path: '/roles', icon: 'shield', group: 'Administration',
+    permission: P.ROLES_VIEW, phase: 2, built: true,
+    description: 'Permission templates and scope settings for staff access.',
+    capabilities: ['Create roles', 'Edit granular permissions', 'Protect recovery access'],
+  },
   // Pages that exist but are not in the sidebar
   { key: 'profile', label: 'My profile', path: '/profile', phase: 4, built: true, description: 'Your account details.', capabilities: ['View current user profile', 'Change password (if in scope)'] },
   { key: 'design-system', label: 'Design system', path: '/design-system', description: 'Shared component showcase (developer page).', isDeveloperPage: true },

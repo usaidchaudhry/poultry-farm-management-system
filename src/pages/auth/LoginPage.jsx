@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import Alert from '../../components/common/Alert.jsx';
 import Button from '../../components/common/Button.jsx';
@@ -8,7 +8,8 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import usePageTitle from '../../hooks/usePageTitle.js';
 import { getErrorMessage } from '../../services/apiError.js';
 import { email as emailRule, required } from '../../utils/validators.js';
-import DemoAccounts from './DemoAccounts.jsx';
+import { config } from '../../utils/config.js';
+const DemoAccounts = lazy(() => import('./DemoAccounts.jsx'));
 import './LoginPage.css';
 
 export default function LoginPage() {
@@ -23,7 +24,7 @@ export default function LoginPage() {
   usePageTitle('Sign in');
 
   if (isInitializing) return <LoadingState message="Checking your session..." />;
-  if (isAuthenticated) return <Navigate to={user.role ? '/dashboard' : '/pending-access'} replace />;
+  if (isAuthenticated) return <Navigate to={user.mustChangePassword ? '/change-password' : user.role ? '/dashboard' : '/pending-access'} replace />;
 
   const setField = (field) => (event) => {
     setValues((current) => ({ ...current, [field]: event.target.value }));
@@ -46,7 +47,7 @@ export default function LoginPage() {
     setFormError('');
     try {
       const signedIn = await login({ email: values.email.trim(), password: values.password });
-      const target = signedIn.role ? location.state?.from?.pathname || '/dashboard' : '/pending-access';
+      const target = signedIn.mustChangePassword ? '/change-password' : signedIn.role ? location.state?.from?.pathname || '/dashboard' : '/pending-access';
       navigate(target, { replace: true });
     } catch (error) {
       setFormError(getErrorMessage(error, 'We could not sign you in. Please try again.'));
@@ -89,14 +90,14 @@ export default function LoginPage() {
         </Button>
       </form>
 
-      <DemoAccounts
+      {config.isMock && <Suspense fallback={null}><DemoAccounts
         disabled={submitting}
         onPick={(account) => {
           setValues({ email: account.email, password: account.password });
           setErrors({});
           setFormError('');
         }}
-      />
+      /></Suspense>}
     </div>
   );
 }

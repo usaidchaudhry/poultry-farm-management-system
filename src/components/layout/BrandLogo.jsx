@@ -4,7 +4,7 @@ import './layout.css';
 export default function BrandLogo({ showName = true }) {
   return (
     <span className="brand">
-      <span className="brand__mark" aria-hidden="true">PM</span>
+      <span className="brand__mark" aria-hidden="true">LF</span>
       {showName && <span className="brand__name">{config.appName}</span>}
     </span>
   );

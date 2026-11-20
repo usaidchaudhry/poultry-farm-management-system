@@ -4,21 +4,25 @@ import EmptyState from '../../components/common/EmptyState.jsx';
 import LoadingState from '../../components/common/LoadingState.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import usePageTitle from '../../hooks/usePageTitle.js';
+import { useToast } from '../../context/ToastContext.jsx';
+import { getErrorMessage } from '../../services/apiError.js';
 
 // For signed-in users who have no role yet ("unassigned user" in the PRD).
 export default function PendingAccessPage() {
   const { user, isAuthenticated, isInitializing, logout } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
 
   usePageTitle('Access pending');
 
   if (isInitializing) return <LoadingState message="Checking your session..." />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user.mustChangePassword) return <Navigate to="/change-password" replace />;
   if (user.role) return <Navigate to="/dashboard" replace />;
 
   const handleSignOut = async () => {
-    await logout();
-    navigate('/login', { replace: true });
+    try { await logout(); navigate('/login', { replace: true }); }
+    catch (error) { toast.error(getErrorMessage(error, 'Could not sign out. Please try again.')); }
   };
 
   return (

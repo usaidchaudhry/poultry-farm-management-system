@@ -6,7 +6,7 @@ import { formatDate } from '../../utils/formatters.js';
 import './users.css';
 
 // Builds the table columns. Action buttons are only included when the viewer may manage users.
-export function getUserColumns({ canManage, currentUserId, onEdit, onChangeRole, onToggleActive, onAssignScope }) {
+export function getUserColumns({ canManage, currentUserId, onEdit, onChangeRole, onToggleActive, onAssignScope, onResetPassword, serverPaging = false }) {
   const columns = [
     {
       key: 'name',
@@ -25,12 +25,12 @@ export function getUserColumns({ canManage, currentUserId, onEdit, onChangeRole,
     {
       key: 'role',
       header: 'Role',
-      sortable: true,
+      sortable: !serverPaging,
       render: (row) =>
-        row.role ? <Badge tone="primary">{ROLE_INFO[row.role]?.label || row.role}</Badge> : <Badge tone="warning">Unassigned</Badge>,
+        row.role ? <Badge tone="primary">{row.roleLabel || ROLE_INFO[row.role]?.label || row.role}</Badge> : <Badge tone="warning">Unassigned</Badge>,
     },
-    { key: 'isActive', header: 'Status', sortable: true, render: (row) => <StatusBadge status={row.isActive ? 'active' : 'inactive'} /> },
-    { key: 'lastLoginAt', header: 'Last sign-in', sortable: true, render: (row) => (row.lastLoginAt ? formatDate(row.lastLoginAt) : 'Never') },
+    { key: 'isActive', header: 'Status', sortable: !serverPaging, render: (row) => <StatusBadge status={row.isActive ? 'active' : 'inactive'} /> },
+    { key: 'lastLoginAt', header: 'Last sign-in', sortable: !serverPaging, render: (row) => (row.lastLoginAt ? formatDate(row.lastLoginAt) : 'Never') },
   ];
 
   if (canManage) {
@@ -47,10 +47,11 @@ export function getUserColumns({ canManage, currentUserId, onEdit, onChangeRole,
               icon="users"
               label={isSelf ? 'You cannot change your own role' : `Change role for ${row.name}`}
               size="sm"
-              disabled={isSelf}
-              onClick={() => onChangeRole(row)}
+              disabled={isSelf || !onChangeRole}
+              onClick={() => onChangeRole?.(row)}
             />
             {onAssignScope && !hasCompanyWideScope(row.role) && <IconButton icon="home" label={`Assign sites and farms to ${row.name}`} size="sm" onClick={() => onAssignScope(row)} />}
+            {onResetPassword && <IconButton icon="lock" label={`Reset password for ${row.name}`} size="sm" disabled={isSelf} onClick={() => onResetPassword(row)} />}
             <IconButton
               icon={row.isActive ? 'xCircle' : 'checkCircle'}
               label={

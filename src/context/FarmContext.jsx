@@ -3,6 +3,7 @@ import { PERMISSIONS } from '../config/permissions.js';
 import { getErrorMessage } from '../services/apiError.js';
 import { organizationService } from '../services/organizationService.js';
 import { useAuth } from './AuthContext.jsx';
+import { config } from '../utils/config.js';
 
 /*
   Organization data + the ACTIVE selection (site > farm > house > flock) for the signed-in user.
@@ -62,7 +63,9 @@ export function FarmProvider({ children }) {
   const { user, hasPermission } = useAuth();
   const userId = user?.id;
   const role = user?.role;
-  const canView = Boolean(user && hasPermission(PERMISSIONS.ORGANIZATION_VIEW));
+  // Live organization endpoints are the next MERN phase. Never populate a real
+  // account's working area from the historical browser mock.
+  const canView = Boolean(config.isMock && user && hasPermission(PERMISSIONS.ORGANIZATION_VIEW));
 
   const [data, setData] = useState(EMPTY_DATA);
   const [loading, setLoading] = useState(false);

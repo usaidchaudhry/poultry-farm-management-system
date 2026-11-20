@@ -8,3 +8,5 @@ dist
 Thumbs.db
 *.log
 coverage/
+.data/
+server/storage/

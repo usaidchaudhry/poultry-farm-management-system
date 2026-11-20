@@ -1,112 +1,173 @@
-# Poultry Management System (React Frontend)
+# LayerFlow
 
-Web Programming Project .**Current state: frontend demo workflows through Phase 10, backed by browser-persisted mock services.**
+A poultry-management Web Programming university course project using React, Express, Node.js, and MongoDB. **MERN Phases 0–2 are implemented:** backend foundation, real authentication, staff administration, and editable role permissions. Existing farm-operation screens remain an explicit mock demo until their backend phases are connected.
+
+- [Product requirements and phased plan](LayerFlow_MERN_PRD.md)
+- [Implementation log, decisions, data dictionary, API contract, and verification](docs/MERN_PHASE_0_2_IMPLEMENTATION.md)
+- [Exact default role/permission matrix](docs/ACCESS_MATRIX.md)
+- [Progress checklist](PROGRESS.md)
 
 ## Requirements
-- Node.js 18 or newer (check with `node -v`)
-- npm (comes with Node.js)
+
+- Node.js **22.12 or newer** and npm. The implementation was verified with Node 24.
+- MongoDB configured as a **replica set** (local helper below) or a transaction-capable Atlas database.
+- An installed Microsoft Edge browser only if running the optional browser verification command.
+
+No cloud credentials or Docker installation are needed when using the local database helper. Its first run downloads a MongoDB binary; allow time and disk space for that download. Later runs reuse the ignored `.data/mongodb-binaries/` cache.
+
+## Install and configure
+
+Run these commands from the repository root:
+
+```powershell
+npm ci
+npm --prefix server ci
+
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+if (-not (Test-Path server/.env)) { Copy-Item server/.env.example server/.env }
+```
+
+Edit `server/.env`. Replace the session-secret placeholder with a random value generated locally:
+
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"
+```
+
+Also set `BOOTSTRAP_NAME`, `BOOTSTRAP_EMAIL`, and `BOOTSTRAP_PASSWORD` for the initial Owner. Choose your own temporary password of 12–128 characters. There is **no default live password**. Keep credentials in your ignored environment file; do not commit or share it.
+
+The default local connection is:
+
+```text
+mongodb://127.0.0.1:27017/layerflow?replicaSet=layerflow
+```
+
+For Atlas, replace `MONGODB_URI` with your database connection string and configure database/network access in your own Atlas account. A standalone MongoDB service without replica-set support will fail startup intentionally.
 
 ## Run locally
-```bash
-npm install
+
+**Terminal 1 — local database** (skip if using Atlas):
+
+```powershell
+npm run db:dev
+```
+
+This starts a single-node development replica set on loopback port 27017. Data persists in `.data/mongodb/` between restarts. Stop with Ctrl+C. It is a development database, not a production hosting configuration.
+
+**Terminal 2 — initialize and run the API:**
+
+```powershell
+npm run db:bootstrap
+npm run db:check
+npm run dev:server
+```
+
+Bootstrap creates the first Owner once and refuses to replace/reset credentials if any user already exists. Indexes and initial role seeds are applied automatically and repeatably. After successful bootstrap, remove `BOOTSTRAP_PASSWORD` from `server/.env`; it is not needed to run the server.
+
+**Terminal 3 — frontend:**
+
+```powershell
 npm run dev
 ```
-Open http://localhost:5173. You land on the sign-in screen. Open "Demo accounts" and click a role to fill the form (password for all: `Poultry@123`). (`/setup-check` is the Phase 1 test page; `/design-system` is the Phase 2 component showcase and needs you to be signed in.)
 
-## Other commands
-```bash
-npm run build     # production build into /dist
-npm run preview   # serve the production build locally
-npm test          # service workflow checks
-```
+Open **http://localhost:5173**. The Vite development proxy forwards `/api` to the API on `127.0.0.1:5000`. Sign in using your bootstrap email/password and choose a new password when prompted.
+
+The API listens on loopback. `/api/v1/health` reports process state; `/api/v1/ready` reports database connectivity. No real database URI or secret appears in those responses.
+
+## Using the implemented administration flow
+
+1. Owner signs in and changes the temporary password.
+2. Open **Users**, create a staff account, and share its temporary password securely.
+3. A newly created account is unassigned. The staff member changes the temporary password and then sees pending access.
+4. Owner assigns a seeded or custom role separately. Role assignment ends that account's existing sessions; sign in again.
+5. Open **Roles and permissions** to create/edit a role and select granular permissions/scope. The bootstrap recovery role is protected.
+6. Role permission edits affect existing sessions on their next protected API request. Deactivation, password reset, and role assignment invalidate previous sessions immediately.
+7. Use **My profile → Change password** for your own password. Use the Users reset action for other accounts.
+
+Farm scope assignment and hierarchy persistence are **MERN Phase 3**. Live farm/clinical/inventory/report pages show their pending integration phase. They do not display local mock records to real authenticated accounts. User/role administration requires company scope and its corresponding permissions; assigned operational roles do not gain account-administration access.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | React development server |
+| `npm run dev:server` | API with file watching |
+| `npm run start:server` | API without watching |
+| `npm run db:dev` | Persistent local development replica set |
+| `npm run db:bootstrap` | Create initial Owner from private environment input |
+| `npm run db:migrate` | Apply repeatable indexes and numbered migrations |
+| `npm run db:check` | Verify connection and real transaction execution |
+| `npm run build` | Production frontend bundle in `dist/` |
+| `npm run preview` | Preview frontend bundle; a real API must be served/proxied separately |
+| `npm test` | Existing browser-mock workflow checks |
+| `npm run test:server` | Actual temporary MongoDB/API/security integration checks |
+| `npm run test:browser` | Headless Edge identity/admin workflow with temporary API/frontend/database |
+| `npm run docs:access` | Regenerate the default access matrix from the seed catalog |
+
+Verification commands never reset your configured application database. They create independent temporary test databases. Browser screenshots are saved under ignored `.data/verification/`.
 
 ## Environment variables
-Copy `.env.example` to `.env` (already done in the zip). Only variables starting with `VITE_` reach the browser.
+
+Frontend values are public and compiled into the browser bundle:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `VITE_DATA_MODE` | `api` | `api` for live identity; `mock` explicitly opens the historical demo |
+| `VITE_API_BASE_URL` | `/api/v1` | API prefix; development uses the Vite proxy |
+| `VITE_APP_NAME` | `LayerFlow` | Visible application name |
+
+Server configuration belongs in `server/.env`:
 
 | Variable | Purpose |
 | --- | --- |
-| `VITE_API_BASE_URL` | Express API base URL (used from later phases) |
-| `VITE_APP_NAME` | App name shown in the UI |
+| `NODE_ENV` | Development/test/production behavior |
+| `PORT` | API port; default 5000, matching the development proxy |
+| `MONGODB_URI` | Transaction-capable database URI |
+| `FRONTEND_ORIGIN` | Exact permitted frontend origin; default `http://localhost:5173` |
+| `SESSION_SECRET` | Required random secret, at least 32 characters; placeholder is rejected |
+| `SESSION_MAX_AGE_MS` | Session lifetime; default 8 hours, maximum 7 days |
+| `COOKIE_SECURE`, `COOKIE_SAME_SITE` | Cookie topology; production requires secure cookies/HTTPS |
+| `TRUST_PROXY` | Trusted reverse-proxy hop count; default 0 |
+| `BUSINESS_TIMEZONE` | Default `Asia/Karachi` |
+| `UPLOAD_DIR` | Reserved private upload location for later evidence module |
+| `BOOTSTRAP_NAME`, `BOOTSTRAP_EMAIL`, `BOOTSTRAP_PASSWORD` | One-time initial account input |
 
-## Folder structure
+Use **localhost** consistently with the default frontend-origin setting. If opening another hostname/port, update the allowed origin accordingly. Do not put secrets in `VITE_*` variables. For a later deployed environment, serve the SPA and `/api/v1` through one HTTPS origin and configure the trusted proxy explicitly.
+
+## Historical frontend mock demo
+
+To inspect the original frontend workflows independently of the API, explicitly set this in the root `.env` and restart Vite:
+
+```dotenv
+VITE_DATA_MODE=mock
 ```
+
+Mock mode retains browser-persisted sample users, farm structure, daily reports, clinical/medication flows, inventory, formulas, sales, finance, alerts, and audit. The login helper clearly identifies those as mock accounts. They are not live server credentials, and clearing browser storage does not reset MongoDB.
+
+Restore `VITE_DATA_MODE=api` before working with the live backend. Requests never silently fall back to mock data.
+
+## Project structure and conventions
+
+```text
 src/
-  app/          App.jsx and routes.jsx (ProtectedRoute arrives in Phase 3/4)
-  assets/       images and static files
-  components/   common, forms, tables, charts, layout (Phase 2+)
-  layouts/      AuthLayout, DashboardLayout (Phase 3)
-  pages/        one folder per module
-  features/     module-specific logic (Phase 4+)
-  services/     api.js (Axios instance) and endpoints/
-  context/      AuthContext, FarmContext (Phase 4/5)
-  hooks/        custom hooks
-  utils/        helpers and config.js
-  styles/       variables.css, base.css, utilities.css
+  app/           routes and route guards
+  config/        module registry and shared permission identifiers
+  context/       authentication, farm selection, feedback
+  components/    shared controls/layout/table/dialogs
+  features/      feature hooks and components
+  pages/         existing and integrated pages
+  services/      UI-facing facades, API transport, explicit mock implementations
+  styles/        plain CSS and design tokens
+server/
+  src/config/    validated environment and database connection
+  src/modules/   feature routes, controllers, services, identity models
+  src/middleware/ authentication, permissions, CSRF
+  src/policies/  scope/date/separation foundations
+  src/lib/       errors, validation, pagination, decimals, idempotency
+  src/scripts/   migrations, bootstrap, database probe
+  scripts/       development DB, browser checks, access documentation
+  tests/         backend integration/security checks
+docs/            implementation log and generated access matrix
+tests/           original mock workflow checks
 ```
 
-## Styling approach
-Plain CSS with design tokens in `src/styles/variables.css`. One CSS file per component or page, placed next to it.
-
-## Git
-```bash
-git init
-git add .
-git commit -m "Phase 1: project setup and React foundation"
-```
-
-## Shared components (Phase 2)
-All live in `src/components`. Import them directly, for example `import Button from '../components/common/Button.jsx'`.
-
-| Folder | Components |
-| --- | --- |
-| `common/` | Button, IconButton, Icon, Badge, StatusBadge, Card, MetricCard, Modal, ConfirmDialog, Spinner, LoadingState, EmptyState, ErrorState, ToastViewport |
-| `forms/` | Input, Select, DateInput, Textarea, Checkbox, Switch, SearchInput, FormField |
-| `tables/` | DataTable, Pagination |
-| `charts/` | ChartContainer |
-
-Also added: `context/ToastContext.jsx` (`useToast()`), `hooks/useClientTable.js` (sorting and paging for mock data), and `utils/` helpers (`classNames`, `validators`, `formatters`, `pagination`).
-
-Toast usage:
-```jsx
-const toast = useToast();
-toast.success('Saved');
-toast.error('Could not save', { title: 'Save failed' });
-```
-
-## App shell and routing (Phase 3)
-- `src/config/modules.js` describes every page once (label, path, icon, permission, phase). The sidebar and the route table are both generated from it.
-- `src/config/permissions.js` holds the permission codes. `src/config/roles.js` maps each role to its permissions (temporary: the backend will return permissions later).
-- `src/app/ProtectedRoute.jsx` redirects signed-out users to `/login` and shows the Access denied page when a permission is missing.
-- Layouts: `AuthLayout` (login pages) and `DashboardLayout` (sidebar, top bar, breadcrumbs, page title).
-- Sidebar is permanent on screens 1024px and wider, and a slide-in drawer on tablet and mobile.
-
-Add a real page later:
-1. Build the page component.
-2. Import it in `src/app/routes.jsx` and add one line to `PAGE_REGISTRY`, for example `users: UsersPage`.
-
-Add a new menu item: add an entry to `MODULES` in `src/config/modules.js` (and a permission code if needed).
-
-## Authentication and users (Phase 4)
-- The login form validates required fields and email format, and shows clear messages for wrong password and deactivated accounts.
-- `src/context/AuthContext.jsx` holds the signed-in user. It restores a saved session on page load, and shows a "session ended" notice on the login page if that fails.
-- The mock backend is in `src/services/mock/` with seed data in `src/mock/seedUsers.js`. The UI only imports `src/services/authService.js` and `src/services/userService.js`. Replace the bodies of those two files with Axios calls when the Express API exists.
-- Permission-aware UI: use `<Can permission={PERMISSIONS.USERS_MANAGE}>...</Can>` or `hasPermission(code)` from `useAuth()`. Never check role names.
-- A user with no role signs in but only sees the Access pending screen.
-- Users page (`/users`, Owner only by default): search, role and status filters, add and edit users, change role (with a preview of what the role can open), activate and deactivate. Users and role changes are saved in the browser (localStorage) so they survive a refresh. To reset to the seed data, run `localStorage.clear()` in the browser console and reload.
-- Safeguards in the mock service: you cannot deactivate yourself or change your own role, and the last active Owner cannot be deactivated or demoted.
-
-Demo accounts (password `Poultry@123`): owner@, production@, farm@, operations@, doctor@ (all `@poultry.test`), plus kamran@ (deactivated) and zoya@ (no role) to test those cases.
-
-## Organization and farm management (Phase 5)
-- `/organization` shows the company hierarchy. Its links open the Sites, Farms, Houses, and Flocks list pages, where authorized users can search, filter, view details, and, with `organization.manage`, create, edit, archive, and restore records.
-- The working-area selector in the top bar stores a user's active site, farm, house, and flock. Options come from that user's permitted scope.
-- Owners can assign sites or individual farms from the Users table. A site assignment includes all of its farms. Company-wide roles do not need assignments.
-- The organization service facade (`src/services/organizationService.js`) currently uses a browser-persisted mock implementation. A real API can replace the facade's methods when the backend is available.
-- Decisions requiring product confirmation are listed in `ASSUMPTIONS.md`.
-
-## Operational frontend (Phases 6–10)
-- Daily reports include eggs, bird population, feed, water, light, health notes, and post-mortem observations. Draft, submission, return for correction, and resubmission states are available. Mortality is a filtered view of reports.
-- Clinical visits can include a prescription, which creates a separate medication task. Farm-side users can record completion or a missed outcome; the prescriber cannot confirm their own task.
-- Inventory includes items, feed stock, low stock, and stock movements. Feed formulas separate composition from costing. Production and sales use separate records with saleable egg stock checks. Finance summarizes recorded sales and expenses.
-- Notifications, dashboard metrics, analytics charts, and the read-only audit log use the same mock records. Demo records are included for the main screens.
-- Backend API calls, media upload, server export, and authoritative date-range enforcement require endpoints that are not in this repository. The browser visual and responsive pass remains pending because the browser access host was unavailable.
+Pages are registered in `src/config/modules.js` and `PAGE_REGISTRY` in `src/app/routes.jsx`. UI authorization uses permission codes through `useAuth()`/`<Can>`. Services sit behind facades; server checks are authoritative. Existing components and plain CSS tokens remain the UI foundation.

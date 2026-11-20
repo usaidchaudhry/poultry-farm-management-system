@@ -19,8 +19,9 @@ export const ROLE_INFO = {
 
 const COMMON = [P.DASHBOARD_VIEW, P.NOTIFICATIONS_VIEW];
 
-// Role -> permission codes. ASSUMPTIONS: see PROGRESS.md. Edit here to change what a role can see.
-// When a real backend exists, this map disappears: the API returns the codes for each user.
+// Historical mock grants and input to the backend's one-time default seed.
+// Live permissions come from MongoDB through /auth/me. Changing this map does
+// not overwrite existing database role definitions; use the Roles UI/migrations.
 export const ROLE_PERMISSIONS = {
   [ROLES.OWNER]: ALL_PERMISSIONS,
   [ROLES.PRODUCTION_MANAGER]: [

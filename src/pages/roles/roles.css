@@ -1,0 +1,7 @@
+.roles__stack { display: flex; flex-direction: column; gap: var(--space-4); }
+.roles__heading { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
+.roles__permission-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.roles__permission-group { min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3); }
+.roles__permission-group legend { font-weight: 600; padding: 0 var(--space-2); }
+.roles__permission-group .check { overflow-wrap: anywhere; }
+@media (max-width: 640px) { .roles__permission-groups { grid-template-columns: 1fr; } .roles__heading { align-items: flex-start; } }
