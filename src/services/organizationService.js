@@ -1,9 +1,9 @@
 import { mockOrganizationService } from './mock/mockOrganizationService.js';
 import { config } from '../utils/config.js';
-import { ApiError } from './apiError.js';
+import api from './api.js';
 
 /*
-  The UI imports ONLY this file for organization data. Swap the bodies for Axios calls later.
+  The UI imports ONLY this file for organization data. API is the default; mocks are explicit.
   kind is 'site' | 'farm' | 'house' | 'flock'.
     getScopedHierarchy(actor)       -> { company, sites, farms, houses, flocks }  (flat arrays with parent ids)
     createEntity(kind, data)        -> record
@@ -21,9 +21,19 @@ const mockFacade = {
   setAssignment: (userId, scope, actor) => mockOrganizationService.setAssignment(userId, scope, actor),
 };
 
-// Live organization CRUD/assignments belong to MERN Phase 3. Calls cannot
-// silently read or mutate browser mocks under a real server-authenticated user.
-export const organizationService = Object.fromEntries(Object.entries(mockFacade).map(([name, method]) => [name, (...args) => {
-  if (config.isMock) return method(...args);
-  return Promise.reject(new ApiError('Organization integration is scheduled for MERN Phase 3.', { code: 'PHASE_NOT_IMPLEMENTED', status: 501 }));
-}]));
+const liveFacade = {
+  async getScopedHierarchy() { return (await api.get('/organization/hierarchy')).data.data; },
+  async createEntity(kind, data) { return (await api.post(`/organization/${kind}s`, normalize(data))).data.data; },
+  async updateEntity(kind, id, data) { return (await api.patch(`/organization/${kind}s/${id}`, normalize(data))).data.data; },
+  async setArchived(kind, id, archived, options) { return (await api.patch(`/organization/${kind}s/${id}/status`, { archived, version: options.version })).data.data; },
+  async listAssignments() { return (await api.get('/organization/assignments')).data.data; },
+  async setAssignment(id, scope, options) { return (await api.put(`/users/${id}/scope`, { ...scope, version: options.version })).data.data; },
+};
+function normalize(data) {
+  const result = { ...data };
+  if ('capacity' in result) result.capacity = result.capacity === '' ? null : Number(result.capacity);
+  if ('initialCount' in result) result.initialCount = Number(result.initialCount);
+  if ('ageAtPlacementDays' in result) result.ageAtPlacementDays = result.ageAtPlacementDays === '' ? null : Number(result.ageAtPlacementDays);
+  return result;
+}
+export const organizationService = Object.fromEntries(Object.keys(mockFacade).map((name) => [name, (...args) => (config.isMock ? mockFacade : liveFacade)[name](...args)]));

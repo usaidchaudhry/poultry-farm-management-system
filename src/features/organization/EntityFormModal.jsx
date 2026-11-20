@@ -41,7 +41,7 @@ export default function EntityFormModal({ open, kind, mode, record, parentOption
       const value = values[field.name];
       if (field.required) next[field.name] = required(value, field.label);
       if (!next[field.name] && field.type === 'number' && String(value).trim() !== '') {
-        next[field.name] = positiveNumber(value, field.label);
+        next[field.name] = field.min === 0 && Number(value) === 0 ? '' : positiveNumber(value, field.label);
       }
     });
     return next;
@@ -69,7 +69,7 @@ export default function EntityFormModal({ open, kind, mode, record, parentOption
     if (field.type === 'parent') return <Select {...common} placeholder={field.placeholder} options={parentOptions} />;
     if (field.type === 'select') return <Select {...common} placeholder={field.placeholder} options={field.options} />;
     if (field.type === 'date') return <DateInput {...common} />;
-    if (field.type === 'number') return <Input {...common} type="number" min="0" step="1" />;
+    if (field.type === 'number') return <Input {...common} type="number" min={field.min ?? 1} step="1" />;
     return <Input {...common} autoComplete="off" />;
   };
 

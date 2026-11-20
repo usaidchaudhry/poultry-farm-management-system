@@ -15,7 +15,7 @@ export const BIRD_TYPE_OPTIONS = [
 const FIELDS = {
   site: [
     { name: 'name', label: 'Site name', type: 'text', required: true },
-    { name: 'location', label: 'Location', type: 'text', hint: 'City or area (optional)' },
+    { name: 'location', label: 'Location', type: 'text', required: true, hint: 'City or area' },
   ],
   farm: [
     { name: 'siteId', label: 'Site', type: 'parent', required: true, placeholder: 'Select a site' },
@@ -30,11 +30,13 @@ const FIELDS = {
     { name: 'houseId', label: 'House', type: 'parent', required: true, placeholder: 'Select a house' },
     { name: 'name', label: 'Flock name', type: 'text', required: true },
     { name: 'birdType', label: 'Bird type', type: 'select', options: BIRD_TYPE_OPTIONS, placeholder: 'Not specified' },
+    { name: 'strain', label: 'Strain', type: 'text', hint: 'Optional breed or strain.' },
+    { name: 'ageAtPlacementDays', label: 'Age at placement (days)', type: 'number', min: 0, hint: 'Optional. Leave blank when unknown; use 0 for day-old chicks.' },
     { name: 'placementDate', label: 'Placement date', type: 'date', required: true },
     { name: 'initialCount', label: 'Birds placed', type: 'number', required: true, hint: 'Number of birds when the flock was placed.' },
   ],
 };
 
 export function getFormFields(kind, mode) {
-  return FIELDS[kind].filter((field) => mode === 'create' || field.type !== 'parent');
+  return FIELDS[kind].filter((field) => mode === 'create' || (field.type !== 'parent' && !['placementDate', 'initialCount', 'ageAtPlacementDays'].includes(field.name)));
 }

@@ -13,6 +13,8 @@ import { idempotentWrite } from '../src/lib/idempotency.js';
 import { businessDate, allowedDateRange } from '../src/policies/dates.js';
 import { assertScope, assertIndependentAdministrator } from '../src/policies/access.js';
 import { money } from '../src/lib/decimal.js';
+import { seedDemoHierarchy } from '../src/scripts/demo-hierarchy-service.js';
+import { hierarchyModels as H } from '../src/modules/organization/models.js';
 
 const initialPassword = 'Temporary-test-password-123';
 const changedPassword = 'Changed-test-password-456';
@@ -55,6 +57,7 @@ before(async () => {
 }, { timeout: 240000 });
 
 beforeEach(async () => {
+  for (const model of Object.values(H)) await model.deleteMany({});
   for (const model of models) await model.deleteMany({});
   await mongoose.connection.db.collection('sessions').deleteMany({});
   await applyMigrations(config);
@@ -238,11 +241,126 @@ test('date, scope, separation and decimal foundations enforce boundary examples'
   assert.equal(money('0.105'), '0.11');
 });
 
-test('future phases are explicit and authentication endpoints are rate-limited', async () => {
-  await admin.agent.get('/api/v1/organization/hierarchy').expect(501);
+test('organization is connected and authentication endpoints are rate-limited', async () => {
+  await admin.agent.get('/api/v1/organization/hierarchy').expect(200);
   const limited = createApp({ ...config, loginLimit: 2 });
   const agent = request.agent(limited);
   const csrf = (await agent.get('/api/v1/auth/csrf')).body.data.csrfToken;
   for (let count = 0; count < 2; count += 1) await agent.post('/api/v1/auth/login').set('X-CSRF-Token', csrf).send({ email: owner.email, password: 'wrong' }).expect(401);
   await agent.post('/api/v1/auth/login').set('X-CSRF-Token', csrf).send({ email: owner.email, password: 'wrong' }).expect(429);
+});
+
+async function hierarchyFixture() {
+  const create = async (kind, values) => (await admin.send('post', `/organization/${kind}s`, values, 201)).body.data;
+  const site = await create('site', { name: 'North Site', location: 'Lahore' });
+  const farmA = await create('farm', { name: 'Farm Alpha', siteId: site.id });
+  const farmB = await create('farm', { name: 'Farm Beta', siteId: site.id });
+  const houseA = await create('house', { name: 'House Alpha', farmId: farmA.id, capacity: 1000 });
+  const houseB = await create('house', { name: 'House Beta', farmId: farmB.id });
+  const flock = await create('flock', { name: 'Layer Alpha', houseId: houseA.id, initialCount: 500, placementDate: '2026-11-01', birdType: 'Layer' });
+  return { create, site, farmA, farmB, houseA, houseB, flock };
+}
+
+test('hierarchy derives ancestors, rejects forged parents, duplicate names, occupied houses and invalid counts', async () => {
+  const f = await hierarchyFixture();
+  assert.equal(f.flock.siteId, f.site.id);
+  assert.equal(f.flock.farmId, f.farmA.id);
+  await admin.send('post', '/organization/farms', { name: ' farm alpha ', siteId: f.site.id }, 409);
+  await admin.send('post', '/organization/houses', { name: 'Forged', farmId: f.farmA.id, siteId: f.site.id }, 422);
+  await admin.send('post', '/organization/flocks', { name: 'Second', houseId: f.houseA.id, initialCount: 1, placementDate: '2026-11-02' }, 409);
+  for (const initialCount of [-1, 0, 1.5, 1001]) await admin.send('post', '/organization/flocks', { name: 'Invalid', houseId: f.houseA.id, initialCount, placementDate: '2026-11-02' }, 422);
+  await admin.send('post', '/organization/flocks', { name: 'Invalid date', houseId: f.houseB.id, initialCount: 10, placementDate: '2026-02-30' }, 422);
+  await admin.send('patch', `/organization/flocks/${f.flock.id}`, { name: 'Rename', initialCount: 3, version: 1 }, 422);
+  await admin.send('patch', `/organization/farms/${f.farmA.id}`, { name: 'Moved', siteId: f.site.id, version: 1 }, 422);
+  await applyMigrations(config);
+  assert.equal(await H.flock.countDocuments(), 1);
+});
+
+test('archive, restore, capacity and stale versions are enforced transactionally', async () => {
+  const f = await hierarchyFixture();
+  await admin.send('patch', `/organization/sites/${f.site.id}/status`, { archived: true, version: 1 }, 409);
+  await admin.send('patch', `/organization/houses/${f.houseA.id}`, { name: 'House Alpha', capacity: 100, version: 1 }, 422);
+  const archived = (await admin.send('patch', `/organization/flocks/${f.flock.id}/status`, { archived: true, version: 1 })).body.data;
+  await admin.send('patch', `/organization/flocks/${f.flock.id}/status`, { archived: false, version: 1 }, 409);
+  const house = (await admin.send('patch', `/organization/houses/${f.houseA.id}/status`, { archived: true, version: 1 })).body.data;
+  await admin.send('post', '/organization/flocks', { name: 'Blocked', houseId: house.id, initialCount: 10, placementDate: '2026-11-01' }, 409);
+  await admin.send('patch', `/organization/flocks/${archived.id}/status`, { archived: false, version: archived.version }, 409);
+  await admin.send('patch', `/organization/houses/${house.id}/status`, { archived: false, version: house.version });
+  const replacement = await f.create('flock', { name: 'Replacement', houseId: house.id, initialCount: 300, placementDate: '2026-11-02' });
+  await admin.send('patch', `/organization/flocks/${archived.id}/status`, { archived: false, version: archived.version }, 409);
+  await admin.send('patch', `/organization/flocks/${replacement.id}/status`, { archived: true, version: replacement.version });
+  await admin.send('patch', `/organization/flocks/${archived.id}/status`, { archived: false, version: archived.version });
+  assert.ok(await AuditEvent.exists({ action: 'organization.flock.status' }));
+});
+
+test('two differently assigned managers see only their farms; site grants include future farms and sessions revoke on reassignment', async () => {
+  const f = await hierarchyFixture();
+  const a = await staff('farm_manager', 'alpha');
+  const b = await staff('farm_manager', 'beta');
+  assert.equal((await a.agent.get('/api/v1/organization/hierarchy').expect(200)).body.data.farms.length, 0);
+  const assign = async (u, siteIds, farmIds) => admin.send('put', `/users/${u.record._id}/scope`, { siteIds, farmIds, version: u.record.version });
+  await assign(a, [], [f.farmA.id]); await assign(b, [], [f.farmB.id]);
+  await a.agent.get('/api/v1/organization/hierarchy').expect(401);
+  const aa = await client('alpha@layerflow.test', changedPassword);
+  const bb = await client('beta@layerflow.test', changedPassword);
+  const data = (await aa.agent.get('/api/v1/organization/hierarchy').expect(200)).body.data;
+  assert.deepEqual(data.farms.map((x) => x.id), [f.farmA.id]);
+  assert.deepEqual(data.sites.map((x) => x.id), [f.site.id]);
+  assert.equal(data.houses[0].id, f.houseA.id);
+  assert.deepEqual((await bb.agent.get('/api/v1/organization/farms').expect(200)).body.data.map((x) => x.id), [f.farmB.id]);
+  for (const path of [`farms/${f.farmB.id}`, `houses/${f.houseB.id}`]) await aa.agent.get(`/api/v1/organization/${path}`).expect(404);
+  const other = await f.create('site', { name: 'Hidden Site', location: 'Lahore' });
+  await aa.agent.get(`/api/v1/organization/sites/${other.id}`).expect(404);
+  await aa.send('patch', `/organization/farms/${f.farmA.id}`, { name: 'Denied', version: 1 }, 403);
+  await aa.send('put', `/users/${a.record._id}/scope`, { siteIds: [f.site.id], farmIds: [], version: 1 }, 403);
+  const current = await User.findById(a.record._id);
+  await admin.send('put', `/users/${current._id}/scope`, { siteIds: [f.site.id], farmIds: [], version: current.version });
+  const future = await f.create('farm', { name: 'Future Farm', siteId: f.site.id });
+  const fresh = await client('alpha@layerflow.test', changedPassword);
+  assert.ok((await fresh.agent.get('/api/v1/organization/hierarchy')).body.data.farms.some((x) => x.id === future.id));
+  const assignments = (await admin.agent.get('/api/v1/organization/assignments').expect(200)).body.data;
+  assert.deepEqual(assignments[String(current._id)].siteIds, [f.site.id]);
+  await admin.send('put', `/users/${current._id}/scope`, { siteIds: [], farmIds: [], version: current.version }, 409);
+  await admin.send('put', `/users/${current._id}/scope`, { siteIds: [], farmIds: ['000000000000000000000001'], version: current.version + 1 }, 422);
+});
+
+test('delegated organization editors cannot mutate outside their scope or expand visible ancestor access', async () => {
+  const f = await hierarchyFixture();
+  const role = (await admin.send('post', '/roles', { code: 'scoped_editor', name: 'Scoped editor', description: '', scopeMode: 'assigned', permissions: ['organization.view', 'organization.manage'] })).body.data;
+  const s = await staff(null, 'editor');
+  let user = (await admin.send('put', `/users/${s.record._id}/role`, { roleId: role.id, version: s.record.version })).body.data;
+  await admin.send('put', `/users/${user.id}/scope`, { siteIds: [], farmIds: [f.farmA.id], version: user.version });
+  const editor = await client('editor@layerflow.test', changedPassword);
+  await editor.send('patch', `/organization/farms/${f.farmB.id}`, { name: 'Denied', version: 1 }, 404);
+  await editor.send('post', '/organization/houses', { name: 'Denied', farmId: f.farmB.id }, 404);
+  await editor.send('post', '/organization/farms', { name: 'Denied sibling', siteId: f.site.id }, 404);
+  await editor.send('patch', `/organization/sites/${f.site.id}`, { name: 'Denied parent', location: 'Lahore', version: 1 }, 404);
+  await editor.send('post', '/organization/sites', { name: 'Denied root', location: 'Lahore' }, 403);
+  await editor.send('post', '/organization/houses', { name: 'Allowed house', farmId: f.farmA.id }, 201);
+});
+
+test('concurrent flock creation leaves exactly one active occupant', async () => {
+  const f = await hierarchyFixture();
+  // Separate authenticated clients avoid shared Supertest-agent cookie races.
+  const x = await client(owner.email, changedPassword); const y = await client(owner.email, changedPassword);
+  const requests = await Promise.allSettled([x, y].map((c, index) => c.send('post', '/organization/flocks', { name: `Concurrent ${index}`, houseId: f.houseB.id, initialCount: 10, placementDate: '2026-11-01' }, 201)));
+  assert.equal(requests.filter((r) => r.status === 'fulfilled').length, 1);
+  assert.match(requests.find((r) => r.status === 'rejected').reason.message, /409/);
+  assert.equal(await H.flock.countDocuments({ houseId: f.houseB.id, status: 'active' }), 1);
+});
+
+
+test('optional demo fixture creates two isolated managers and refuses to overwrite existing data', async () => {
+  const accounts = await seedDemoHierarchy(initialPassword);
+  assert.equal(accounts.length, 2);
+  assert.equal(await H.farm.countDocuments(), 2);
+  for (const account of accounts) {
+    const c = await client(account.email);
+    await c.send('post', '/auth/change-password', { currentPassword: initialPassword, newPassword: changedPassword });
+    const hierarchy = (await c.agent.get('/api/v1/organization/hierarchy').expect(200)).body.data;
+    assert.deepEqual(hierarchy.farms.map((f) => f.id), [account.farmId]);
+    assert.equal(hierarchy.flocks.length, 1);
+  }
+  await assert.rejects(seedDemoHierarchy(initialPassword), { code: 'DEMO_EXISTS' });
+  assert.equal(await H.farm.countDocuments(), 2);
 });

@@ -1,9 +1,10 @@
 import { mongoose, transaction } from '../config/database.js';
 import { Organization, Role, SecurityGuard, Migration, models } from '../modules/access/models.js';
+import { hierarchyModels } from '../modules/organization/models.js';
 import { DEFAULT_ROLES } from '../modules/access/catalog.js';
 
 export async function applyMigrations(config) {
-  for (const model of models) {
+  for (const model of [...models, ...Object.values(hierarchyModels)]) {
     try { await model.createCollection(); } catch (error) { if (error.code !== 48) throw error; }
     await model.createIndexes();
   }
@@ -16,5 +17,7 @@ export async function applyMigrations(config) {
     for (const role of DEFAULT_ROLES) await Role.create([{ ...role, organizationId: organization._id }], { session });
     await Migration.create([{ _id: '001-identity-foundation', appliedAt: new Date() }], { session });
   });
+  // Collection/index creation above is repeatable, including existing installs.
+  await Migration.updateOne({ _id: '002-organization-hierarchy' }, { $setOnInsert: { appliedAt: new Date() } }, { upsert: true });
   return mongoose.connection;
 }

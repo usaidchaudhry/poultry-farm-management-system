@@ -50,7 +50,7 @@ export function getUserColumns({ canManage, currentUserId, onEdit, onChangeRole,
               disabled={isSelf || !onChangeRole}
               onClick={() => onChangeRole?.(row)}
             />
-            {onAssignScope && !hasCompanyWideScope(row.role) && <IconButton icon="home" label={`Assign sites and farms to ${row.name}`} size="sm" onClick={() => onAssignScope(row)} />}
+            {onAssignScope && row.role && (serverPaging ? row.scopeMode === 'assigned' : !hasCompanyWideScope(row.role)) && <IconButton icon="home" label={`Assign sites and farms to ${row.name}`} size="sm" onClick={() => onAssignScope(row)} />}
             {onResetPassword && <IconButton icon="lock" label={`Reset password for ${row.name}`} size="sm" disabled={isSelf} onClick={() => onResetPassword(row)} />}
             <IconButton
               icon={row.isActive ? 'xCircle' : 'checkCircle'}

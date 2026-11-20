@@ -16,7 +16,8 @@
     "db:check": "npm --prefix server run check:db",
     "test:server": "npm --prefix server test",
     "test:browser": "npm --prefix server run test:browser",
-    "docs:access": "npm --prefix server run docs:access"
+    "docs:access": "npm --prefix server run docs:access",
+    "db:demo": "npm --prefix server run demo:hierarchy"
   },
   "dependencies": {
     "axios": "^1.7.9",

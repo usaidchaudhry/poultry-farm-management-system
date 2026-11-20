@@ -109,6 +109,20 @@ Plan: `LayerFlow_MERN_PRD.md`. Detailed implementation log, data dictionary, dec
 - [x] Actual MongoDB/API checks include transaction rollback, immediate revocation, concurrent administrator safeguards, and disk-backed database/session persistence across MongoDB restart.
 - [x] Headless clean-browser checks cover forced password change, API restart/session restoration, role/user administration, pending access, permission revocation, logout, and a phone-width user list.
 - [x] Final verification: 17 backend checks, 9 original mock checks, browser workflow, production build, documentation links, and 39 server-file syntax checks passed. Local screenshots were reviewed; details and commands are in the implementation log.
-- [ ] MERN Phase 3: persistent organization hierarchy, archive/occupancy rules, user site/farm assignment, and live farm selection.
+- [x] MERN Phase 3: persistent organization hierarchy, archive/occupancy rules, user site/farm assignment, and live farm selection. See `docs/MERN_PHASE_3_IMPLEMENTATION.md` for the implementation steps, schema/API, decisions, optional two-farm demo seed, and verification.
 
-Boundary: no public signup or default live account password. Configure private server environment values and run the bootstrap command described in README. Site/farm data and operational modules remain Phase 3 onward; their historical mock completion does not mean full-stack completion.
+Boundary: no public signup or default live account password. Configure private server environment values and run the bootstrap command described in README. Site/farm data is now live; operational modules remain Phase 4 onward; their historical mock completion does not mean full-stack completion.
+
+
+### MERN Phase 3 completion (20 November 2026)
+
+- [x] Site/farm/house/flock MongoDB models, derived ancestors, immutable parents/placement baseline, required site location, optional strain/age, unique names, and one active flock per house.
+- [x] Authorized scoped hierarchy/list/detail and versioned create/edit/archive/restore, capacity checks, transactional audit, and repeatable index migration.
+- [x] Versioned staff site/farm assignments, grant safeguards, active-reference validation, empty assignment behavior, and immediate session invalidation.
+- [x] Live organization facade, existing screens/dialogs, custom-role scope metadata, top-bar selector, saved preference validation, and stale response cleanup.
+- [x] Explicit development demo command creates two farms with separately assigned managers; no default password and no overwrite/reset.
+- [x] Extended MongoDB/API, restart persistence, and browser verification; original mock checks retained.
+- [x] Final Phase 3 checks: 23 backend checks, 9 mock checks, clean-browser workflow, production build, 44 server syntax checks, documentation links, and whitespace checks passed. Desktop organization and mobile scope screenshots were reviewed.
+- [ ] MERN Phase 4: daily reports, mortality, bird measurements, population movements and corrections. Not included in this request.
+
+The earlier frontend Phase 5 assumptions are historical. Live MERN Phase 3 supersedes its concurrent-flock assumption with one active flock per house, requires site location, and freezes placement data. Report-draft and unresolved-task archive checks will be added when those live modules exist.

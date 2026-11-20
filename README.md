@@ -1,9 +1,10 @@
 # LayerFlow
 
-A poultry-management Web Programming university course project using React, Express, Node.js, and MongoDB. **MERN Phases 0–2 are implemented:** backend foundation, real authentication, staff administration, and editable role permissions. Existing farm-operation screens remain an explicit mock demo until their backend phases are connected.
+A poultry-management Web Programming university course project using React, Express, Node.js, and MongoDB. **MERN Phases 0-3 are implemented:** backend foundation, real authentication, staff administration, editable role permissions, persistent farm hierarchy, and scoped staff assignments. Existing farm-operation screens remain an explicit mock demo until their backend phases are connected.
 
 - [Product requirements and phased plan](LayerFlow_MERN_PRD.md)
 - [Implementation log, decisions, data dictionary, API contract, and verification](docs/MERN_PHASE_0_2_IMPLEMENTATION.md)
+- [Phase 3 implementation, API contract, demo data, and verification](docs/MERN_PHASE_3_IMPLEMENTATION.md)
 - [Exact default role/permission matrix](docs/ACCESS_MATRIX.md)
 - [Progress checklist](PROGRESS.md)
 
@@ -83,7 +84,7 @@ The API listens on loopback. `/api/v1/health` reports process state; `/api/v1/re
 6. Role permission edits affect existing sessions on their next protected API request. Deactivation, password reset, and role assignment invalidate previous sessions immediately.
 7. Use **My profile → Change password** for your own password. Use the Users reset action for other accounts.
 
-Farm scope assignment and hierarchy persistence are **MERN Phase 3**. Live farm/clinical/inventory/report pages show their pending integration phase. They do not display local mock records to real authenticated accounts. User/role administration requires company scope and its corresponding permissions; assigned operational roles do not gain account-administration access.
+Open **Organization** to create Sites > Farms > Houses > Flocks. One active flock is permitted per house. In **Users**, assign sites or farms to staff with assigned-scope roles. Assignment changes end their existing sessions; sign in again. The top-bar working-area selector displays only accessible active records. Live clinical/inventory/report pages show their pending integration phase. They do not display local mock records to real authenticated accounts. User/role administration requires company scope and its corresponding permissions; assigned operational roles do not gain account-administration access.
 
 ## Commands
 
@@ -95,12 +96,13 @@ Farm scope assignment and hierarchy persistence are **MERN Phase 3**. Live farm/
 | `npm run db:dev` | Persistent local development replica set |
 | `npm run db:bootstrap` | Create initial Owner from private environment input |
 | `npm run db:migrate` | Apply repeatable indexes and numbered migrations |
+| `npm run db:demo` | Optional two-farm demonstration fixture; requires private `DEMO_PASSWORD` and empty development hierarchy |
 | `npm run db:check` | Verify connection and real transaction execution |
 | `npm run build` | Production frontend bundle in `dist/` |
 | `npm run preview` | Preview frontend bundle; a real API must be served/proxied separately |
 | `npm test` | Existing browser-mock workflow checks |
 | `npm run test:server` | Actual temporary MongoDB/API/security integration checks |
-| `npm run test:browser` | Headless Edge identity/admin workflow with temporary API/frontend/database |
+| `npm run test:browser` | Headless Edge identity/admin/hierarchy/scope workflow with temporary API/frontend/database |
 | `npm run docs:access` | Regenerate the default access matrix from the seed catalog |
 
 Verification commands never reset your configured application database. They create independent temporary test databases. Browser screenshots are saved under ignored `.data/verification/`.
@@ -111,7 +113,7 @@ Frontend values are public and compiled into the browser bundle:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `VITE_DATA_MODE` | `api` | `api` for live identity; `mock` explicitly opens the historical demo |
+| `VITE_DATA_MODE` | `api` | `api` for live identity and organization; `mock` explicitly opens the historical demo |
 | `VITE_API_BASE_URL` | `/api/v1` | API prefix; development uses the Vite proxy |
 | `VITE_APP_NAME` | `LayerFlow` | Visible application name |
 

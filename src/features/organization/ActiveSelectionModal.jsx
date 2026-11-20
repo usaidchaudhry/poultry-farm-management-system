@@ -4,6 +4,7 @@ import LoadingState from '../../components/common/LoadingState.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import Select from '../../components/forms/Select.jsx';
 import { hasCompanyWideScope } from '../../config/roles.js';
+import { config } from '../../utils/config.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useFarm } from '../../context/FarmContext.jsx';
 import './organization.css';
@@ -42,7 +43,7 @@ export default function ActiveSelectionModal({ open, onClose }) {
         <Alert tone="error">{farm.error}</Alert>
       ) : noRecords ? (
         <Alert tone="info">
-          {hasCompanyWideScope(user.role)
+          {(config.isMock ? hasCompanyWideScope(user.role) : user.scopeMode === 'company')
             ? 'There are no active sites yet. Create one under Organization.'
             : 'No sites or farms are assigned to you yet. Ask the Owner to assign them.'}
         </Alert>

@@ -128,14 +128,97 @@ try {
   await page.getByText('Daily reports integration is pending', { exact: true }).waitFor();
   console.log('PASS: permission revocation removes the table; live account never renders mock operations.');
 
-  await page.getByRole('button', { name: /Browser Owner/ }).click();
+  // Phase 3: exercise the existing organization screens against the live API.
+  const createEntity = async (kind, fill) => {
+    await page.goto(`${origin}/organization/${kind}s`);
+    await page.getByRole('button', { name: `Add ${kind}`, exact: true }).first().click();
+    await fill(page.getByRole('dialog'));
+    await page.getByRole('button', { name: `Create ${kind}`, exact: true }).click();
+    await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  };
+  await createEntity('site', async (dialog) => {
+    await dialog.getByLabel(/^Site name\b/).fill('Browser Site');
+    await dialog.getByLabel(/^Location\b/).fill('Lahore');
+  });
+  for (const suffix of ['Alpha', 'Beta']) await createEntity('farm', async (dialog) => {
+    await dialog.getByLabel(/^Site\b/).selectOption({ label: 'Browser Site' });
+    await dialog.getByLabel(/^Farm name\b/).fill(`Browser Farm ${suffix}`);
+  });
+  await createEntity('house', async (dialog) => {
+    await dialog.getByLabel(/^Farm\b/).selectOption({ label: 'Browser Farm Alpha' });
+    await dialog.getByLabel(/^House or shed name\b/).fill('Browser House');
+    await dialog.getByLabel(/^Capacity\b/).fill('1000');
+  });
+  await createEntity('flock', async (dialog) => {
+    await dialog.getByLabel(/^House\b/).selectOption({ label: 'Browser House' });
+    await dialog.getByLabel(/^Flock name\b/).fill('Browser Flock');
+    await dialog.getByLabel('Bird type', { exact: true }).selectOption('Layer');
+    await dialog.getByLabel(/^Placement date\b/).fill('2026-11-01');
+    await dialog.getByLabel(/^Birds placed\b/).fill('500');
+  });
+  await page.getByRole('button', { name: 'Edit Browser Flock', exact: true }).click();
+  assert.equal(await page.getByRole('dialog').getByLabel(/^Birds placed\b/).count(), 0);
+  await page.getByRole('dialog').getByLabel(/^Flock name\b/).fill('Browser Flock Renamed');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Archive Browser Flock Renamed', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Archive', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  await page.getByRole('switch', { name: 'Show archived', exact: true }).click();
+  await page.getByRole('button', { name: 'Restore Browser Flock Renamed', exact: true }).click();
+  await page.getByRole('button', { name: 'Archive Browser Flock Renamed', exact: true }).waitFor();
+  await page.goto(`${origin}/organization`);
+  await page.getByText('Browser Flock Renamed', { exact: true }).waitFor();
+  await page.screenshot({ path: resolve(evidence, 'organization-desktop.png'), fullPage: true });
+  console.log('PASS: live hierarchy create, flock edit, archive, restore and tree.');
+
+  await page.goto(`${origin}/users`);
+  await page.getByRole('button', { name: 'Change role for Browser Staff', exact: true }).click();
+  await page.getByLabel('Role', { exact: true }).last().selectOption({ label: 'Farm Manager' });
+  await page.getByRole('button', { name: 'Save role', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Assign sites and farms to Browser Staff', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('Browser Farm Alpha', { exact: true }).check();
+  await page.getByRole('button', { name: 'Save assignments', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  await login(staffPage, 'browser-staff@layerflow.test', staffReplacement);
+  await staffPage.waitForURL('**/dashboard');
+  await staffPage.goto(`${origin}/organization/farms`);
+  await staffPage.getByText('Browser Farm Alpha', { exact: true }).waitFor();
+  assert.equal(await staffPage.getByText('Browser Farm Beta', { exact: true }).count(), 0);
+  assert.equal(await staffPage.getByRole('button', { name: 'Add farm', exact: true }).count(), 0);
+  await staffPage.getByTitle('Choose working area', { exact: true }).click();
+  await staffPage.getByRole('dialog').getByLabel('Flock', { exact: true }).selectOption({ label: 'Browser House / Browser Flock Renamed' });
+  await staffPage.getByRole('button', { name: 'Done', exact: true }).click();
+  await staffPage.reload();
+  await staffPage.getByTitle('Choose working area', { exact: true }).filter({ hasText: 'Browser Site / Browser Farm Alpha / Browser House / Browser Flock Renamed' }).waitFor();
+  await staffPage.screenshot({ path: resolve(evidence, 'farm-scope-mobile.png'), fullPage: true });
+  assert(await staffPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+  console.log('PASS: assignment dialog, scoped farm list, phone-width selector and saved selection.');
+
+  await page.getByRole('button', { name: 'Assign sites and farms to Browser Staff', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('Browser Farm Alpha', { exact: true }).uncheck();
+  await page.getByRole('button', { name: 'Save assignments', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  await staffPage.reload();
+  await staffPage.waitForURL('**/login');
+  await login(staffPage, 'browser-staff@layerflow.test', staffReplacement);
+  await staffPage.waitForURL(/\/(dashboard|organization\/farms)$/);
+  await staffPage.goto(`${origin}/organization/farms`);
+  await staffPage.getByRole('heading', { name: 'No farms found', exact: true }).waitFor();
+  await staffPage.getByTitle('Choose working area', { exact: true }).click();
+  await staffPage.getByText('No sites or farms are assigned to you yet. Ask the Owner to assign them.', { exact: true }).waitFor();
+  await staffPage.getByRole('button', { name: 'Done', exact: true }).click();
+  console.log('PASS: scope revocation ends session and clears inaccessible saved selection.');
+
+  await page.getByRole('button', { name: /^Browser Owner/ }).click();
   await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
   await page.waitForURL('**/login');
   await page.reload();
   await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
   assert.deepEqual(errors, []);
   console.log('PASS: logout survives refresh; no browser runtime errors.');
-  console.log('Browser verification passed. Screenshots: .data/verification/roles-desktop.png and users-mobile.png');
+  console.log('Browser verification passed. Screenshots: .data/verification/{roles-desktop,users-mobile,organization-desktop,farm-scope-mobile}.png');
 } catch (error) {
   if (inspectionPage && !inspectionPage.isClosed()) {
     await inspectionPage.screenshot({ path: resolve(evidence, 'browser-failure.png'), fullPage: true }).catch(() => {});

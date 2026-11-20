@@ -31,7 +31,7 @@ export default function Topbar({ sidebarOpen, onMenuClick }) {
         <Breadcrumbs />
       </div>
       <div className="topbar__right">
-        {config.isMock && hasPermission(PERMISSIONS.ORGANIZATION_VIEW) && <ActiveSelectionButton />}
+        {hasPermission(PERMISSIONS.ORGANIZATION_VIEW) && <ActiveSelectionButton />}
         {config.isMock && hasPermission(PERMISSIONS.NOTIFICATIONS_VIEW) && (
           <Link to="/notifications" className="topbar__bell" aria-label="Notifications">
             <Icon name="bell" size={18} />{openNotifications > 0 && <span className="topbar__bell-count">{openNotifications}</span>}

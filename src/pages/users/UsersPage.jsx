@@ -31,6 +31,7 @@ export default function UsersPage() {
   const farm = useFarm();
   const toast = useToast();
   const canManage = hasPermission(PERMISSIONS.USERS_MANAGE);
+  const canAssignScope = canManage && hasPermission(PERMISSIONS.ORGANIZATION_MANAGE);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -59,11 +60,12 @@ export default function UsersPage() {
     return () => { current = false; };
   }, []);
   useEffect(() => {
-    if (!config.isMock || !canManage) return undefined;
+    if (!canAssignScope) return undefined;
     let current = true;
-    organizationService.listAssignments().then((data) => { if (current) setAssignments(data); }).catch((failure) => { if (current) setAssignmentError(getErrorMessage(failure)); }).finally(() => { if (current) setAssignmentsLoading(false); });
+    setAssignmentsLoading(true);
+    organizationService.listAssignments().then((data) => { if (current) { setAssignments(data); setAssignmentError(''); } }).catch((failure) => { if (current) setAssignmentError(getErrorMessage(failure)); }).finally(() => { if (current) setAssignmentsLoading(false); });
     return () => { current = false; };
-  }, [canManage]);
+  }, [canAssignScope, users]);
 
   const mockRows = users.filter((item) => (!search || `${item.name} ${item.email}`.toLowerCase().includes(search.toLowerCase())) && (!roleFilter || (roleFilter === 'unassigned' ? !item.role : item.role === roleFilter)) && (!statusFilter || item.isActive === (statusFilter === 'active')));
   const mockTable = useClientTable(mockRows, { initialSort: { key: 'name', direction: 'asc' } });
@@ -81,7 +83,8 @@ export default function UsersPage() {
     setRoleTarget(null); await reload(); toast.success(config.isMock ? 'Role updated in mock data.' : 'Role updated. Existing sessions for that account have ended.');
   };
   const saveScope = async (scope) => {
-    const saved = await organizationService.setAssignment(scopeTarget.id, scope, { id: user.id, role: user.role });
+    const saved = await organizationService.setAssignment(scopeTarget.id, scope, { id: user.id, role: user.role, version: scopeTarget.version });
+    await reload();
     setAssignments((current) => ({ ...current, [scopeTarget.id]: saved })); setScopeTarget(null); toast.success('Assignments updated.');
   };
   const toggleActive = async () => {
@@ -104,12 +107,12 @@ export default function UsersPage() {
     canManage, currentUserId: user.id, serverPaging: !config.isMock,
     onEdit: (row) => openForm('edit', row), onChangeRole: roles.length && !roleError ? setRoleTarget : null, onToggleActive: setToggleTarget,
     onResetPassword: config.isMock ? null : (row) => { setResetTarget(row); setTemporaryPassword(''); setActionError(''); },
-    onAssignScope: config.isMock && !assignmentsLoading && !assignmentError && !farm.loading && !farm.error ? setScopeTarget : null,
+    onAssignScope: canAssignScope && !assignmentsLoading && !assignmentError && !farm.loading && !farm.error ? setScopeTarget : null,
   });
   const setFilter = (setter) => (value) => { setter(value); setPage(1); };
   return <div className="org__stack">
     <div className="org__heading"><p className="text-muted">{meta?.total ?? users.length} accounts</p>{canManage && <Button leftIcon="plus" onClick={() => openForm('create')}>Add user</Button>}</div>
-    {!config.isMock && <Alert tone="info">New accounts start unassigned and must change their temporary password. Farm scope assignment becomes available in MERN Phase 3.</Alert>}
+    {!config.isMock && <Alert tone="info">New accounts start unassigned and must change their temporary password. Assign sites or individual farms to accounts whose role uses assigned scope.</Alert>}
     {(roleError || assignmentError) && <Alert tone="error">{roleError || assignmentError}</Alert>}
     <Card padded={false}>
       <div className="users__toolbar">
@@ -125,7 +128,7 @@ export default function UsersPage() {
     {canManage && <>
       <UserFormModal key={`user-${form.key}`} open={form.open} mode={form.mode} user={form.user} onClose={closeForm} onSubmit={saveUser} />
       <RoleAssignModal key={`role-${roleTarget?.id || 'none'}`} open={Boolean(roleTarget)} user={roleTarget} roles={roles} onClose={() => setRoleTarget(null)} onSubmit={saveRole} />
-      {config.isMock && <ScopeAssignModal key={`scope-${scopeTarget?.id || 'none'}`} open={Boolean(scopeTarget)} user={scopeTarget} sites={farm.sites} farms={farm.farms} assignment={assignments[scopeTarget?.id]} onClose={() => setScopeTarget(null)} onSubmit={saveScope} />}
+      {canAssignScope && <ScopeAssignModal key={`scope-${scopeTarget?.id || 'none'}`} open={Boolean(scopeTarget)} user={scopeTarget} sites={farm.sites} farms={farm.farms} assignment={assignments[scopeTarget?.id]} onClose={() => setScopeTarget(null)} onSubmit={saveScope} />}
       <ConfirmDialog open={Boolean(toggleTarget)} title={`${toggleTarget?.isActive ? 'Deactivate' : 'Activate'} this user?`} message={toggleTarget ? `${toggleTarget.name} will be ${toggleTarget.isActive ? 'unable' : 'able'} to sign in.` : ''} confirmLabel={toggleTarget?.isActive ? 'Deactivate' : 'Activate'} loading={busy} onConfirm={toggleActive} onCancel={() => setToggleTarget(null)} />
       <Modal open={Boolean(resetTarget)} title={`Reset password for ${resetTarget?.name || 'user'}`} onClose={busy ? undefined : () => setResetTarget(null)}>
         <form className="users__modal-body" onSubmit={resetPassword}>

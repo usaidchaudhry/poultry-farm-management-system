@@ -10,9 +10,10 @@ import { connectDatabase, mongoose } from '../src/config/database.js';
 import { applyMigrations } from '../src/scripts/migrations.js';
 import { bootstrapOwner } from '../src/scripts/bootstrap-service.js';
 import { createApp } from '../src/app.js';
+import { hierarchyModels as H } from '../src/modules/organization/models.js';
 import { User, Role } from '../src/modules/access/models.js';
 
-test('development database files, roles, user, and authenticated session survive a full MongoDB restart', { timeout: 120000 }, async () => {
+test('development database files, roles, user, hierarchy, assignments, and authenticated session survive a full MongoDB restart', { timeout: 120000 }, async () => {
   const root = resolve('../.data/verification');
   await mkdir(root, { recursive: true });
   const dbPath = await mkdtemp(`${root}${sep}persistence-`);
@@ -29,6 +30,9 @@ test('development database files, roles, user, and authenticated session survive
     const login = await agent.post('/api/v1/auth/login').set('X-CSRF-Token', token).send({ email: owner.email, password: initial }).expect(200);
     const changed = await agent.post('/api/v1/auth/change-password').set('X-CSRF-Token', login.body.data.csrfToken).send({ currentPassword: initial, newPassword: next }).expect(200);
     const cookie = changed.headers['set-cookie'][0].split(';')[0];
+    const site = (await agent.post('/api/v1/organization/sites').set('X-CSRF-Token', changed.body.data.csrfToken).send({ name: 'Persistent Site', location: 'Lahore' }).expect(201)).body.data;
+    const farm = (await agent.post('/api/v1/organization/farms').set('X-CSRF-Token', changed.body.data.csrfToken).send({ name: 'Persistent Farm', siteId: site.id }).expect(201)).body.data;
+    await User.updateOne({ _id: owner.id }, { $set: { farmIds: [farm.id] } });
     await mongoose.disconnect();
     await replica.stop({ doCleanup: false });
     replica = await createDevelopmentDatabase({ dbPath, port, name: 'layerflow_persistence_test' });
@@ -39,6 +43,10 @@ test('development database files, roles, user, and authenticated session survive
     assert.equal(restored.body.data.mustChangePassword, false);
     assert.equal(await User.countDocuments(), 1);
     assert.equal(await Role.countDocuments(), 5);
+    assert.equal(await H.farm.countDocuments(), 1);
+    assert.deepEqual(restored.body.data.farmIds, [farm.id]);
+    const hierarchy = await request(createApp(config)).get('/api/v1/organization/hierarchy').set('Cookie', cookie).expect(200);
+    assert.equal(hierarchy.body.data.farms[0].id, farm.id);
   } finally {
     await mongoose.disconnect();
     if (replica) await replica.stop({ doCleanup: false });

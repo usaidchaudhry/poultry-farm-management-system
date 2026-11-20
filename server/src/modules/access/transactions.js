@@ -6,14 +6,14 @@ import { RECOVERY_PERMISSIONS } from './catalog.js';
 
 // All identity/access mutations serialize on this document. This also protects
 // against concurrent role edits and user deactivations removing every admin.
-export async function accessTransaction(caller, required, work, { allowTemporaryPassword = false } = {}) {
+export async function accessTransaction(caller, required, work, { allowTemporaryPassword = false, companyOnly = true } = {}) {
   return transaction(async (session) => {
     await SecurityGuard.findOneAndUpdate({ _id: 'access-control' }, { $inc: { revision: 1 } }, { session });
     const user = await User.findById(caller.id).select('+authVersion').populate('roleId').session(session);
     if (!user?.isActive || user.authVersion !== caller.authVersion) throw new AppError(401, 'SESSION_INVALID', 'Sign in to continue.');
     const actor = actorFrom(user);
     if (!allowTemporaryPassword && actor.mustChangePassword) throw new AppError(403, 'PASSWORD_CHANGE_REQUIRED', 'Change your temporary password first.');
-    if (required.length && (actor.scopeMode !== 'company' || !required.every((code) => actor.permissions.includes(code)))) throw denied();
+    if (required.length && ((companyOnly && actor.scopeMode !== 'company') || !required.every((code) => actor.permissions.includes(code)))) throw denied();
     const result = await work(session, actor, user);
     await assertAdministratorRemains(actor.organizationId, session);
     return result;

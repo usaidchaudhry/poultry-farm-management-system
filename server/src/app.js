@@ -1,3 +1,5 @@
+import { organizationRouter, assignScope } from './modules/organization/routes.js';
+import { permission } from './middleware/auth.js';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
@@ -48,8 +50,8 @@ export function createApp(config) {
   app.use('/api/v1/users', companyScope, usersRouter);
   app.use('/api/v1/roles', companyScope, rolesRouter);
   app.get('/api/v1/permissions', companyScope, anyPermission(P.ROLES_VIEW, P.ROLES_MANAGE), (req, res) => res.json({ data: ALL_PERMISSIONS.filter((code) => code !== P.NOTIFICATIONS_MANAGE) }));
-  app.all('/api/v1/users/:id/scope', (req, res, next) => next(new AppError(501, 'PHASE_NOT_IMPLEMENTED', 'Farm scope assignment is implemented in MERN Phase 3.')));
-  app.use('/api/v1/organization', (req, res, next) => next(new AppError(501, 'PHASE_NOT_IMPLEMENTED', 'Organization persistence is implemented in MERN Phase 3.')));
+  app.put('/api/v1/users/:id/scope', companyScope, permission(P.USERS_MANAGE, P.ORGANIZATION_MANAGE), assignScope);
+  app.use('/api/v1/organization', organizationRouter);
   app.use((req, res, next) => next(new AppError(404, 'NOT_FOUND', 'Endpoint not found.')));
   app.use(errorHandler);
   return app;

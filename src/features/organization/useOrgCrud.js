@@ -31,7 +31,7 @@ export default function useOrgCrud(kind) {
       const created = await organizationService.createEntity(kind, values, actor);
       toast.success(`${label} "${created.name}" was created.`);
     } else {
-      const updated = await organizationService.updateEntity(kind, form.record.id, values, actor);
+      const updated = await organizationService.updateEntity(kind, form.record.id, { ...values, version: form.record.version }, actor);
       toast.success(`${label} "${updated.name}" was updated.`);
     }
     await refresh();
@@ -40,7 +40,7 @@ export default function useOrgCrud(kind) {
 
   const restore = async (record) => {
     try {
-      await organizationService.setArchived(kind, record.id, false, actor);
+      await organizationService.setArchived(kind, record.id, false, { ...actor, version: record.version });
       toast.success(`${label} "${record.name}" was restored.`);
       await refresh();
     } catch (error) {
@@ -51,7 +51,7 @@ export default function useOrgCrud(kind) {
   const confirmArchive = async () => {
     setBusy(true);
     try {
-      await organizationService.setArchived(kind, archiving.id, true, actor);
+      await organizationService.setArchived(kind, archiving.id, true, { ...actor, version: archiving.version });
       toast.success(`${label} "${archiving.name}" was archived.`);
       await refresh();
     } catch (error) {

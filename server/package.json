@@ -15,7 +15,8 @@
     "check:db": "node --env-file-if-exists=.env src/scripts/check-database.js",
     "test": "node --test --test-concurrency=1 tests/*.test.js",
     "test:browser": "node scripts/browser-smoke.js",
-    "docs:access": "node scripts/document-access.js"
+    "docs:access": "node scripts/document-access.js",
+    "demo:hierarchy": "node --env-file-if-exists=.env src/scripts/demo-hierarchy.js"
   },
   "dependencies": {
     "connect-mongo": "^6.0.0",
