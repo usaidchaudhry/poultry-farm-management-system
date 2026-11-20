@@ -1,5 +1,7 @@
 import DailyReportsPage from '../pages/work/DailyReportsPage.jsx';
 import BirdMeasurementsPage from '../pages/work/BirdMeasurementsPage.jsx';
+import ClinicalVisitsPage from '../pages/work/ClinicalVisitsPage.jsx';
+import LiveMedicationPage from '../pages/work/LiveMedicationPage.jsx';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { ALL_PAGES } from '../config/modules.js';
 import AuthLayout from '../layouts/AuthLayout.jsx';
@@ -50,8 +52,8 @@ const PAGE_REGISTRY = {
   flocks: () => <OrgListPage kind="flock" />,
   'daily-reports': () => config.isMock ? <WorkPage kind="dailyReports" permission={PERMISSIONS.DAILY_REPORTS_MANAGE} /> : <DailyReportsPage />,
   mortality: () => config.isMock ? <WorkPage kind="dailyReports" permission={PERMISSIONS.DAILY_REPORTS_MANAGE} filterRows={(row) => Number(row.mortality) > 0} /> : <DailyReportsPage mortality />,
-  clinical: () => <WorkPage kind="clinicalVisits" permission={PERMISSIONS.CLINICAL_MANAGE} />,
-  medication: MedicationPage,
+  clinical: () => config.isMock ? <WorkPage kind="clinicalVisits" permission={PERMISSIONS.CLINICAL_MANAGE} /> : <ClinicalVisitsPage />,
+  medication: config.isMock ? MedicationPage : LiveMedicationPage,
   'bird-parameters': () => config.isMock ? <WorkPage kind="measurements" permission={PERMISSIONS.BIRD_PARAMETERS_MANAGE} /> : <BirdMeasurementsPage />,
   inventory: InventoryPage,
   'feed-formulas': FeedFormulasPage,

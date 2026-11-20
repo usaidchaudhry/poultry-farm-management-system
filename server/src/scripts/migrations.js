@@ -3,9 +3,10 @@ import { Organization, Role, SecurityGuard, Migration, models } from '../modules
 import { hierarchyModels } from '../modules/organization/models.js';
 import { DEFAULT_ROLES } from '../modules/access/catalog.js';
 import { reportModels, openingMovement } from '../modules/reports/models.js';
+import { clinicalModels } from '../modules/clinical/models.js';
 
 export async function applyMigrations(config) {
-  for (const model of [...models, ...Object.values(hierarchyModels), ...reportModels]) {
+  for (const model of [...models, ...Object.values(hierarchyModels), ...reportModels, ...clinicalModels]) {
     try { await model.createCollection(); } catch (error) { if (error.code !== 48) throw error; }
     await model.createIndexes();
   }
@@ -26,5 +27,6 @@ export async function applyMigrations(config) {
     for (const flock of await hierarchyModels.flock.find().session(session)) await openingMovement(flock, session);
     await Migration.create([{ _id: '003-reports-and-population', appliedAt: new Date() }], { session });
   });
+  await Migration.updateOne({ _id: '004-clinical-administration' }, { $setOnInsert: { appliedAt: new Date() } }, { upsert: true });
   return mongoose.connection;
 }

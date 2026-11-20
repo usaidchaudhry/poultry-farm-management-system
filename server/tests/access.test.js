@@ -15,6 +15,9 @@ import { assertScope, assertIndependentAdministrator } from '../src/policies/acc
 import { money } from '../src/lib/decimal.js';
 import { seedDemoHierarchy } from '../src/scripts/demo-hierarchy-service.js';
 import { reportModels, DailyReport, ReportRevision, BirdMovement, BirdMeasurement, PublicationIntent } from '../src/modules/reports/models.js';
+import { clinicalModels, ClinicalVisit, Prescription, MedicationTask, AdministrationEvent } from '../src/modules/clinical/models.js';
+import { taskStatus } from '../src/modules/clinical/service.js';
+import { localInstant, occurrences } from '../src/modules/clinical/schedule.js';
 import { hierarchyModels as H } from '../src/modules/organization/models.js';
 
 const initialPassword = 'Temporary-test-password-123';
@@ -58,6 +61,7 @@ before(async () => {
 }, { timeout: 240000 });
 
 beforeEach(async () => {
+  for (const model of clinicalModels) await model.deleteMany({});
   for (const model of reportModels) await model.deleteMany({});
   for (const model of Object.values(H)) await model.deleteMany({});
   for (const model of models) await model.deleteMany({});
@@ -537,4 +541,206 @@ test('backdated first submissions cannot change the opening of a later published
   assert.equal(await ReportRevision.countDocuments({ reportId: earlier.id }), 0);
   const intact = (await admin.agent.get(`/api/v1/daily-reports/${current.id}`).expect(200)).body.data;
   assert.equal(intact.summary.closingBirds, current.publishedSummary.closingBirds);
+});
+
+const prescriptionItems = (startDate = today()) => ['alpha', 'beta'].map((key) => ({ key, medicine: `Recorded item ${key}`, doseValue: 1, doseUnit: 'ml', instructions: 'Follow the recorded clinician instructions', route: key === 'alpha' ? 'water' : 'feed', startDate, durationDays: 3, times: ['00:00', '12:00'], batchLabel: 'Descriptive tank or batch label' }));
+async function clinicalFixture() {
+  const f = await hierarchyFixture(daysAgo(1));
+  const d = await staff('doctor', 'clinician'); const m = await staff('farm_manager', 'administrator');
+  for (const u of [d, m]) await admin.send('put', `/users/${u.record._id}/scope`, { siteIds: [], farmIds: [f.farmA.id], version: u.record.version });
+  const doctor = await client('clinician@layerflow.test', changedPassword); const manager = await client('administrator@layerflow.test', changedPassword);
+  const visit = (await doctor.send('post', '/clinical-visits', { flockId: f.flock.id, occurredAt: new Date(Date.now() - 60000).toISOString(), diagnosis: 'Recorded clinical assessment', observations: 'Observed findings', parameters: 'Recorded parameters', remarks: 'Course project test data' }, 201)).body.data;
+  const prescription = (await doctor.send('post', `/clinical-visits/${visit.id}/prescriptions`, { items: prescriptionItems() }, 201)).body.data;
+  return { ...f, doctor, manager, visit, prescription };
+}
+
+test('clinical finalization generates distinct recurring tasks once and preserves finalized definitions', async () => {
+  const f = await clinicalFixture();
+  const preview = (await f.doctor.send('post', `/clinical-visits/${f.visit.id}/schedule-preview`, { items: prescriptionItems() })).body.data;
+  assert.equal(preview.occurrences.length, 12);
+  assert.equal(preview.timezone, 'Asia/Karachi');
+  assert.equal(await MedicationTask.countDocuments(), 0);
+  const finalized = (await f.doctor.send('post', `/prescriptions/${f.prescription.id}/finalize`, { version: 1 })).body.data;
+  assert.equal(finalized.taskCount, 12);
+  await f.doctor.send('post', `/prescriptions/${f.prescription.id}/finalize`, { version: 1 }, 409);
+  await f.doctor.send('patch', `/prescriptions/${f.prescription.id}`, { version: finalized.version, items: prescriptionItems() }, 409);
+  await f.doctor.send('patch', `/clinical-visits/${f.visit.id}`, { version: 1, occurredAt: new Date().toISOString(), diagnosis: 'Locked' }, 409);
+  assert.equal(await MedicationTask.countDocuments(), 12);
+  assert.equal(new Set((await MedicationTask.find()).map((r) => `${r.itemKey}:${r.occurrenceKey}`)).size, 12);
+  await admin.send('patch', `/organization/flocks/${f.flock.id}/status`, { version: 1, archived: true }, 409);
+});
+
+test('independent outcomes and corrections retain actual/recorded times and immutable superseding evidence', async () => {
+  const f = await clinicalFixture();
+  const finalizedByAnother = (await admin.send('post', `/prescriptions/${f.prescription.id}/finalize`, { version: 1 })).body.data;
+  assert.equal(finalizedByAnother.prescribedBy, f.doctor.user.id);
+  assert.equal(finalizedByAnother.finalizedBy, owner.id);
+  const role = await Role.findOne({ code: 'doctor' });
+  await admin.send('patch', `/roles/${role._id}`, { name: role.name, description: role.description, scopeMode: 'assigned', version: role.version, permissions: [...role.permissions, 'medication.administer', 'medication.correct'] });
+  const task = await MedicationTask.findOne({ prescriptionId: f.prescription.id }).sort({ dueAt: 1 });
+  const input = { version: 1, outcome: 'completed', actualAt: new Date().toISOString(), actualDose: 1, doseUnit: 'ml', comments: 'Recorded independently' };
+  const blocked = await f.doctor.send('post', `/medication-tasks/${task._id}/outcomes`, input, 403);
+  assert.equal(blocked.body.code, 'SEPARATION_OF_DUTIES');
+  const first = (await f.manager.send('post', `/medication-tasks/${task._id}/outcomes`, input, 201)).body.data;
+  assert.equal(first.effectiveOutcome.recordedBy, f.manager.user.id);
+  assert.ok(Date.parse(first.effectiveOutcome.recordedAt) >= Date.parse(first.effectiveOutcome.actualAt));
+  await f.manager.send('post', `/medication-tasks/${task._id}/outcomes`, input, 409);
+  await f.manager.send('post', `/medication-tasks/${task._id}/corrections`, { ...input, version: first.version, reason: 'No correction grant' }, 403);
+  const correction = { version: first.version, outcome: 'missed', actualAt: new Date().toISOString(), reason: 'Corrected the recorded outcome' };
+  await f.doctor.send('post', `/medication-tasks/${task._id}/corrections`, correction, 403);
+  const changed = (await admin.send('post', `/medication-tasks/${task._id}/corrections`, correction, 201)).body.data;
+  assert.equal(changed.effectiveOutcome.supersedesId, first.effectiveOutcome.id);
+  const detail = (await f.doctor.agent.get(`/api/v1/medication-tasks/${task._id}`).expect(200)).body.data;
+  assert.equal(detail.events.length, 2);
+  assert.equal(detail.events[1].outcome, 'completed');
+  const evidence = await AdministrationEvent.findById(first.effectiveOutcome.id); evidence.comments = 'Overwrite';
+  await assert.rejects(evidence.save(), /append-only/);
+});
+
+test('outcomes validate explicit dose/instructions, missed reason, future time and scheduled task boundaries', async () => {
+  const f = await clinicalFixture(); await f.doctor.send('post', `/prescriptions/${f.prescription.id}/finalize`, { version: 1 });
+  const task = await MedicationTask.findOne({ prescriptionId: f.prescription.id }).sort({ dueAt: 1 });
+  await f.manager.send('post', `/medication-tasks/${task._id}/outcomes`, { version: 1, outcome: 'completed', actualAt: new Date().toISOString() }, 422);
+  await f.manager.send('post', `/medication-tasks/${task._id}/outcomes`, { version: 1, outcome: 'missed', actualAt: new Date().toISOString() }, 422);
+  await f.manager.send('post', `/medication-tasks/${task._id}/outcomes`, { version: 1, outcome: 'missed', actualAt: new Date(Date.now() + 60000).toISOString(), reason: 'Future not allowed' }, 422);
+  const future = await MedicationTask.findOne({ prescriptionId: f.prescription.id, dueAt: { $gt: new Date() } });
+  await f.manager.send('post', `/medication-tasks/${future._id}/outcomes`, { version: 1, outcome: 'missed', actualAt: new Date().toISOString(), reason: 'Too early' }, 422);
+  await f.manager.send('post', `/medication-tasks/${task._id}/outcomes`, { version: 1, outcome: 'completed', actualAt: new Date().toISOString(), instructionReference: 'Recorded prescription instruction followed' }, 201);
+});
+
+test('replacement before outcomes cancels old tasks and links a new immutable prescription version', async () => {
+  const f = await clinicalFixture(); const first = (await f.doctor.send('post', `/prescriptions/${f.prescription.id}/finalize`, { version: 1 })).body.data;
+  const result = (await f.doctor.send('post', `/prescriptions/${first.id}/replace`, { version: first.version, reason: 'Authorized replacement course', items: [prescriptionItems()[0]] }, 201)).body.data;
+  assert.equal(result.cancelledTasks, 12);
+  assert.equal(result.replacement.previousId, first.id);
+  assert.equal(result.replacement.sequence, 2);
+  assert.equal(await MedicationTask.countDocuments({ prescriptionId: first.id, state: 'cancelled' }), 12);
+  assert.equal(await MedicationTask.countDocuments({ prescriptionId: result.replacement.id }), 6);
+  const old = (await f.doctor.agent.get(`/api/v1/clinical-visits/${f.visit.id}`).expect(200)).body.data.prescriptions.find((r) => r.id === first.id);
+  assert.equal(old.items.length, 2);
+  await f.doctor.send('post', `/prescriptions/${first.id}/replace`, { version: first.version, reason: 'Repeated', items: prescriptionItems() }, 409);
+});
+
+test('replacement after an outcome preserves completed and elapsed tasks and replaces future work only', async () => {
+  const f = await clinicalFixture(); const first = (await f.doctor.send('post', `/prescriptions/${f.prescription.id}/finalize`, { version: 1 })).body.data;
+  const task = await MedicationTask.findOne({ prescriptionId: first.id }).sort({ dueAt: 1 });
+  await f.manager.send('post', `/medication-tasks/${task._id}/outcomes`, { version: 1, outcome: 'completed', actualAt: new Date().toISOString(), actualDose: 1, doseUnit: 'ml' }, 201);
+  await f.doctor.send('post', `/prescriptions/${first.id}/replace`, { version: first.version, reason: 'Cannot replace elapsed work', items: prescriptionItems() }, 422);
+  const result = (await f.doctor.send('post', `/prescriptions/${first.id}/replace`, { version: first.version, reason: 'Replace future occurrences', items: prescriptionItems(new Date(Date.parse(today()) + 86400000).toISOString().slice(0, 10)) }, 201)).body.data;
+  assert.equal((await MedicationTask.findById(task._id)).state, 'completed');
+  assert.equal(await AdministrationEvent.countDocuments({ taskId: task._id }), 1);
+  assert.equal(await MedicationTask.countDocuments({ prescriptionId: first.id, state: 'cancelled', dueAt: { $lte: task.dueAt } }), 0);
+  assert.ok(result.cancelledTasks > 0);
+});
+
+test('clinical history is separate from operational report history and farm scope protects every direct route', async () => {
+  const f = await clinicalFixture();
+  const old = (await f.doctor.send('post', '/clinical-visits', { flockId: f.flock.id, occurredAt: `${daysAgo(1)}T12:00:00+05:00`, diagnosis: 'Previous assessment' }, 201)).body.data;
+  await H.flock.updateOne({ _id: f.flock.id }, { $set: { placementDate: daysAgo(10) } }); // Historical fixture only.
+  const historical = (await f.doctor.send('post', '/clinical-visits', { flockId: f.flock.id, occurredAt: `${daysAgo(5)}T12:00:00+05:00`, diagnosis: 'Historical clinical record' }, 201)).body.data;
+  await f.doctor.agent.get(`/api/v1/clinical-visits/${historical.id}`).expect(200);
+  await f.manager.agent.get(`/api/v1/clinical-visits/${historical.id}`).expect(403);
+  const draft = (await f.doctor.send('post', `/clinical-visits/${historical.id}/prescriptions`, { items: prescriptionItems(daysAgo(5)) }, 201)).body.data;
+  await f.doctor.send('post', `/prescriptions/${draft.id}/finalize`, { version: 1 }, 422);
+  const hiddenFlock = await f.create('flock', { name: 'Hidden clinical flock', houseId: f.houseB.id, initialCount: 100, placementDate: today() });
+  const hidden = (await admin.send('post', '/clinical-visits', { flockId: hiddenFlock.id, occurredAt: new Date().toISOString(), diagnosis: 'Hidden record' }, 201)).body.data;
+  await f.doctor.agent.get(`/api/v1/clinical-visits/${hidden.id}`).expect(404);
+  await f.doctor.send('post', `/clinical-visits/${hidden.id}/prescriptions`, { items: prescriptionItems() }, 404);
+  const hiddenPrescription = (await admin.send('post', `/clinical-visits/${hidden.id}/prescriptions`, { items: prescriptionItems() }, 201)).body.data;
+  await f.doctor.send('patch', `/prescriptions/${hiddenPrescription.id}`, { version: 1, items: prescriptionItems() }, 404);
+  await f.doctor.send('post', `/prescriptions/${hiddenPrescription.id}/finalize`, { version: 1 }, 404);
+  await f.doctor.send('post', `/prescriptions/${hiddenPrescription.id}/cancel`, { version: 1, reason: 'Cannot cancel hidden work' }, 404);
+  await admin.send('post', `/prescriptions/${hiddenPrescription.id}/finalize`, { version: 1 });
+  const hiddenTask = await MedicationTask.findOne({ prescriptionId: hiddenPrescription.id }).sort({ dueAt: 1 });
+  await f.doctor.agent.get(`/api/v1/medication-tasks/${hiddenTask._id}`).expect(404);
+  await f.manager.send('post', `/medication-tasks/${hiddenTask._id}/outcomes`, { version: 1, outcome: 'missed', actualAt: new Date().toISOString(), reason: 'Outside assigned farm' }, 404);
+  await f.doctor.agent.get(`/api/v1/clinical-visits?flockId=${f.flock.id}&farmId=${f.farmB.id}`).expect(404);
+  await f.doctor.send('post', `/clinical-visits/${old.id}/schedule-preview`, { items: [{ ...prescriptionItems()[0], times: ['08:00', '08:00'] }] }, 422);
+});
+
+test('old open tasks expose current actionable state while late outcomes preserve actual time and restrict closed history', async () => {
+  const f = await clinicalFixture(); await f.doctor.send('post', `/prescriptions/${f.prescription.id}/finalize`, { version: 1 });
+  const task = await MedicationTask.findOne({ prescriptionId: f.prescription.id }).sort({ dueAt: 1 });
+  await ClinicalVisit.updateOne({ _id: f.visit.id }, { $set: { occurredAt: new Date(`${daysAgo(10)}T06:00:00Z`), businessDate: daysAgo(10) } });
+  await MedicationTask.updateOne({ _id: task._id }, { $set: { dueAt: new Date(`${daysAgo(10)}T06:00:00Z`), dueBusinessDate: daysAgo(10) } });
+  await f.manager.agent.get(`/api/v1/clinical-visits/${f.visit.id}`).expect(403);
+  const actionable = (await f.manager.agent.get(`/api/v1/medication-tasks/${task._id}`).expect(200)).body.data;
+  assert.equal(actionable.displayStatus, 'overdue'); assert.equal('diagnosis' in actionable, false);
+  await f.manager.send('post', `/medication-tasks/${task._id}/outcomes`, { version: 1, outcome: 'missed', actualAt: `${daysAgo(9)}T06:00:00Z`, reason: 'Old actual time needs permission' }, 403);
+  const completed = (await f.manager.send('post', `/medication-tasks/${task._id}/outcomes`, { version: 1, outcome: 'missed', actualAt: new Date().toISOString(), reason: 'Unable to administer, recorded independently' }, 201)).body.data;
+  assert.ok((await f.manager.agent.get('/api/v1/medication-tasks?view=history').expect(200)).body.data.some((r) => r.id === String(task._id)));
+  await admin.send('post', `/medication-tasks/${task._id}/corrections`, { version: completed.version, outcome: 'missed', actualAt: `${daysAgo(9)}T06:00:00Z`, reason: 'Corrected actual missed occurrence time' }, 201);
+  await f.manager.agent.get(`/api/v1/medication-tasks/${task._id}`).expect(403);
+  await f.doctor.agent.get(`/api/v1/medication-tasks/${task._id}`).expect(200);
+});
+
+test('concurrent finalization and outcome retries commit single task definitions and single effective evidence', async () => {
+  const f = await clinicalFixture();
+  const doctors = await Promise.all([client('clinician@layerflow.test', changedPassword), client('clinician@layerflow.test', changedPassword)]);
+  const finals = await Promise.allSettled(doctors.map((c) => c.send('post', `/prescriptions/${f.prescription.id}/finalize`, { version: 1 })));
+  assert.equal(finals.filter((r) => r.status === 'fulfilled').length, 1);
+  assert.match(finals.find((r) => r.status === 'rejected').reason.message, /409/);
+  assert.equal(await MedicationTask.countDocuments(), 12);
+  const task = await MedicationTask.findOne().sort({ dueAt: 1 });
+  const managers = await Promise.all([client('administrator@layerflow.test', changedPassword), client('administrator@layerflow.test', changedPassword)]);
+  const outcomes = await Promise.allSettled(managers.map((c) => c.send('post', `/medication-tasks/${task._id}/outcomes`, { version: 1, outcome: 'missed', actualAt: new Date().toISOString(), reason: 'Independent observation' }, 201)));
+  assert.equal(outcomes.filter((r) => r.status === 'fulfilled').length, 1);
+  assert.match(outcomes.find((r) => r.status === 'rejected').reason.message, /409/);
+  assert.equal(await AdministrationEvent.countDocuments(), 1);
+});
+
+test('timezone scheduling normalizes UTC and rejects nonexistent or ambiguous DST clock times', () => {
+  assert.equal(localInstant('2026-11-20', '08:30', 'Asia/Karachi').toISOString(), '2026-11-20T03:30:00.000Z');
+  assert.throws(() => localInstant('2026-03-08', '02:30', 'America/New_York'), { code: 'AMBIGUOUS_SCHEDULE' });
+  assert.throws(() => localInstant('2026-11-01', '01:30', 'America/New_York'), { code: 'AMBIGUOUS_SCHEDULE' });
+  assert.equal(occurrences(prescriptionItems(), 'Asia/Karachi').length, 12);
+});
+
+test('cancellation preserves elapsed open work after outcomes and cancelled tasks cannot acquire evidence', async () => {
+  const f = await clinicalFixture(); const finalized = (await f.doctor.send('post', `/prescriptions/${f.prescription.id}/finalize`, { version: 1 })).body.data;
+  const first = await MedicationTask.findOne({ prescriptionId: finalized.id }).sort({ dueAt: 1 });
+  await f.manager.send('post', `/medication-tasks/${first._id}/outcomes`, { version: 1, outcome: 'missed', actualAt: new Date().toISOString(), reason: 'Independent missed occurrence' }, 201);
+  const cancelled = (await f.doctor.send('post', `/prescriptions/${finalized.id}/cancel`, { version: finalized.version, reason: 'Stop future occurrences' })).body.data;
+  assert.ok(cancelled.cancelledTasks > 0);
+  assert.equal(await AdministrationEvent.countDocuments(), 1);
+  assert.ok(await MedicationTask.exists({ prescriptionId: finalized.id, state: 'open', dueAt: { $lte: new Date() } }));
+  const closed = await MedicationTask.findOne({ prescriptionId: finalized.id, state: 'cancelled' });
+  await f.manager.send('post', `/medication-tasks/${closed._id}/outcomes`, { version: closed.version, outcome: 'missed', actualAt: new Date().toISOString(), reason: 'Cancelled task cannot be acted' }, 409);
+  assert.equal((await f.manager.agent.get(`/api/v1/medication-tasks?view=history&status=cancelled`).expect(200)).body.data.length, cancelled.cancelledTasks);
+});
+
+test('draft cancellation creates no tasks and resolving every task completes a prescription without inventing administration', async () => {
+  const f = await clinicalFixture();
+  await f.doctor.send('post', `/prescriptions/${f.prescription.id}/cancel`, { version: 1, reason: 'Discard unfinalized plan' });
+  assert.equal(await MedicationTask.countDocuments(), 0);
+  const visit = (await f.doctor.send('post', '/clinical-visits', { flockId: f.flock.id, occurredAt: new Date().toISOString(), diagnosis: 'Another recorded visit' }, 201)).body.data;
+  const p = (await f.doctor.send('post', `/clinical-visits/${visit.id}/prescriptions`, { items: [{ ...prescriptionItems()[0], durationDays: 1, times: ['00:00'] }] }, 201)).body.data;
+  await f.doctor.send('post', `/prescriptions/${p.id}/finalize`, { version: 1 });
+  const task = await MedicationTask.findOne({ prescriptionId: p.id });
+  await f.manager.send('post', `/medication-tasks/${task._id}/outcomes`, { version: 1, outcome: 'missed', actualAt: new Date().toISOString(), reason: 'Recorded missed outcome' }, 201);
+  assert.equal((await Prescription.findById(p.id)).status, 'completed');
+  assert.equal((await MedicationTask.findById(task._id)).state, 'missed');
+  const now = new Date('2026-11-20T12:00:00Z');
+  assert.equal(taskStatus({ state: 'open', dueAt: new Date('2026-11-20T12:01:00Z') }, now), 'scheduled');
+  assert.equal(taskStatus({ state: 'open', dueAt: new Date('2026-11-20T11:30:00Z') }, now), 'due');
+  assert.equal(taskStatus({ state: 'open', dueAt: new Date('2026-11-20T11:00:00Z') }, now), 'overdue');
+});
+
+test('daily-report clinical links validate source scope, dates, ancestry and grants without recording another outcome', async () => {
+  const f = await clinicalFixture(); await f.doctor.send('post', `/prescriptions/${f.prescription.id}/finalize`, { version: 1 });
+  const task = await MedicationTask.findOne({ prescriptionId: f.prescription.id }).sort({ dueAt: 1 });
+  const outcome = (await f.manager.send('post', `/medication-tasks/${task._id}/outcomes`, { version: 1, outcome: 'completed', actualAt: new Date().toISOString(), actualDose: 1, doseUnit: 'ml' }, 201)).body.data;
+  const linked = { ...completeReport(), doctorVisitId: f.visit.id, medicines: [{ name: 'Recorded item alpha', quantity: 1, unit: 'ml', prescriptionId: f.prescription.id, administrationEventId: outcome.effectiveOutcome.id }] };
+  const report = await createReport(f, today(), linked);
+  assert.equal(report.data.doctorVisitId, f.visit.id);
+  assert.equal(report.data.medicines[0].administrationEventId, outcome.effectiveOutcome.id);
+  assert.equal(await AdministrationEvent.countDocuments(), 1);
+  const otherVisit = (await f.doctor.send('post', '/clinical-visits', { flockId: f.flock.id, occurredAt: new Date().toISOString(), diagnosis: 'Different visit' }, 201)).body.data;
+  await admin.send('patch', `/daily-reports/${report.id}`, { version: report.version, data: { ...linked, doctorVisitId: otherVisit.id } }, 422);
+  await admin.send('patch', `/daily-reports/${report.id}`, { version: report.version, data: { ...linked, medicines: [{ ...linked.medicines[0], administrationEventId: '000000000000000000000001' }] } }, 422);
+  const linkedByManager = (await f.manager.send('patch', `/daily-reports/${report.id}`, { version: report.version, data: { ...completeReport(), doctorVisitId: null, medicines: [{ name: 'Reported observation', administrationEventId: outcome.effectiveOutcome.id }] } })).body.data;
+  assert.equal(linkedByManager.data.medicines[0].administrationEventId, outcome.effectiveOutcome.id);
+  const role = await Role.findOne({ code: 'farm_manager' });
+  await admin.send('patch', `/roles/${role._id}`, { version: role.version, name: role.name, description: role.description, scopeMode: 'assigned', permissions: role.permissions.filter((p) => !['clinical.view', 'medication.view'].includes(p)) });
+  await f.manager.send('patch', `/daily-reports/${report.id}`, { version: linkedByManager.version, data: linked }, 403);
 });

@@ -1,11 +1,12 @@
 # LayerFlow
 
-A poultry-management Web Programming university course project using React, Express, Node.js, and MongoDB. **MERN Phases 0-4 are implemented:** backend foundation, real authentication, staff administration, editable role permissions, persistent farm hierarchy, scoped staff assignments, daily reports and revisions, mortality, population tracking, and bird measurements. Clinical, inventory, sales, and other later modules remain integration-pending in API mode; the historical demo is available through explicit mock mode.
+A poultry-management Web Programming university course project using React, Express, Node.js, and MongoDB. **MERN Phases 0-5 are implemented:** backend foundation, real authentication, staff administration, editable role permissions, persistent farm hierarchy, scoped staff assignments, daily reports and revisions, mortality, population tracking, bird measurements, clinical prescriptions, and independent medication administration. Inventory, feed formulas, sales, and other later modules remain integration-pending in API mode; the historical demo is available through explicit mock mode.
 
 - [Product requirements and phased plan](LayerFlow_MERN_PRD.md)
 - [Implementation log, decisions, data dictionary, API contract, and verification](docs/MERN_PHASE_0_2_IMPLEMENTATION.md)
 - [Phase 3 implementation, API contract, demo data, and verification](docs/MERN_PHASE_3_IMPLEMENTATION.md)
 - [Phase 4 reports, population, measurements, and publication contract](docs/MERN_PHASE_4_IMPLEMENTATION.md)
+- [Phase 5 clinical workflow, scheduling, evidence, and verification](docs/MERN_PHASE_5_IMPLEMENTATION.md)
 - [Exact default role/permission matrix](docs/ACCESS_MATRIX.md)
 - [Progress checklist](PROGRESS.md)
 
@@ -85,7 +86,7 @@ The API listens on loopback. `/api/v1/health` reports process state; `/api/v1/re
 6. Role permission edits affect existing sessions on their next protected API request. Deactivation, password reset, and role assignment invalidate previous sessions immediately.
 7. Use **My profile → Change password** for your own password. Use the Users reset action for other accounts.
 
-Open **Organization** to create Sites > Farms > Houses > Flocks. One active flock is permitted per house. In **Users**, assign sites or farms to staff with assigned-scope roles. Assignment changes end their existing sessions; sign in again. The top-bar working-area selector displays only accessible active records. Live clinical/inventory/sales pages show their pending integration phase. They do not display local mock records to real authenticated accounts. User/role administration requires company scope and its corresponding permissions; assigned operational roles do not gain account-administration access.
+Open **Organization** to create Sites > Farms > Houses > Flocks. One active flock is permitted per house. In **Users**, assign sites or farms to staff with assigned-scope roles. Assignment changes end their existing sessions; sign in again. The top-bar working-area selector displays only accessible active records. Live inventory/sales pages show their pending integration phase. They do not display local mock records to real authenticated accounts. User/role administration requires company scope and its corresponding permissions; assigned operational roles do not gain account-administration access.
 
 ## Daily reporting and bird measurements
 
@@ -98,6 +99,16 @@ Open **Organization** to create Sites > Farms > Houses > Flocks. One active floc
 Staff reads are limited to today/yesterday unless their role grants history. Older report writes additionally need correction permission and a reason. Farm scope is checked on lists, details, revisions, and writes.
 
 **Phase 4 is an interim publication gate:** report submission records source-keyed egg/feed posting intents. Actual stock balances and negative-stock correction checks arrive with Phases 6/8; submission currently does not deduct feed or create saleable egg stock. See the Phase 4 implementation log for the exact contract.
+
+## Clinical visits and medication
+
+1. Assign a Doctor and Farm Manager to the same farm. The Doctor records a clinical visit and creates a multi-item prescription draft.
+2. Enter dose/unit or explicit instructions, route, start date, duration, and daily local times. Preview the schedule, save, then finalize. Two items at two times over three days create 12 separate tasks.
+3. A different authorized person opens a due task in **Medication** and records completed or missed with actual time and dose/instruction evidence. Prescribers cannot record or correct their own tasks, even with administration permissions.
+4. Use **Closed outcome history** to review evidence. Authorized corrections append superseding events; old evidence is retained. Cancellation/replacement preserves recorded outcomes and, after any outcome, affects future tasks only.
+5. Daily reports can optionally link existing visits, prescription versions, and administration events. These references never confirm another administration or issue inventory.
+
+Clinical history permissions remain separate from ordinary operational date access. Open tasks remain actionable when overdue across older dates. Images are a later-phase dependency. See the Phase 5 log for action/date policies, UTC scheduling, correction rules, and the source API contracts.
 
 ## Commands
 
@@ -115,7 +126,7 @@ Staff reads are limited to today/yesterday unless their role grants history. Old
 | `npm run preview` | Preview frontend bundle; a real API must be served/proxied separately |
 | `npm test` | Existing browser-mock workflow checks |
 | `npm run test:server` | Actual temporary MongoDB/API/security integration checks |
-| `npm run test:browser` | Headless Edge identity/admin/hierarchy/report/measurement workflow with temporary API/frontend/database |
+| `npm run test:browser` | Headless Edge identity/admin/hierarchy/report/clinical workflow with temporary API/frontend/database |
 | `npm run docs:access` | Regenerate the default access matrix from the seed catalog |
 
 Verification commands never reset your configured application database. They create independent temporary test databases. Browser screenshots are saved under ignored `.data/verification/`.

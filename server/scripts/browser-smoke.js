@@ -19,6 +19,8 @@ const temporary = randomBytes(24).toString('hex');
 const replacement = randomBytes(24).toString('hex');
 const staffPassword = randomBytes(24).toString('hex');
 const staffReplacement = randomBytes(24).toString('hex');
+const doctorPassword = randomBytes(24).toString('hex');
+const doctorReplacement = randomBytes(24).toString('hex');
 const origin = 'http://127.0.0.1:5191';
 
 try {
@@ -292,6 +294,132 @@ try {
   await page.goto(`${origin}/users`);
   console.log('PASS: measurement normalization and live report draft validation, submit, return, correction, snapshots and mortality.');
 
+  await page.getByRole('button', { name: 'Add user', exact: true }).click();
+  await page.getByLabel(/^Full name\b/).fill('Browser Doctor');
+  await page.getByLabel(/^Email\b/).fill('browser-doctor@layerflow.test');
+  await page.getByLabel(/^Temporary password\b/).fill(doctorPassword);
+  await page.getByRole('button', { name: 'Create user', exact: true }).click();
+  await page.getByRole('button', { name: 'Change role for Browser Doctor', exact: true }).click();
+  await page.getByLabel('Role', { exact: true }).last().selectOption({ label: 'Doctor' });
+  await page.getByRole('button', { name: 'Save role', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Assign sites and farms to Browser Doctor', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('Browser Farm Alpha', { exact: true }).check();
+  await page.getByRole('button', { name: 'Save assignments', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  const doctorContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const doctorPage = await doctorContext.newPage();
+  doctorPage.on('pageerror', (error) => errors.push(error.message));
+  await login(doctorPage, 'browser-doctor@layerflow.test', doctorPassword);
+  await change(doctorPage, doctorPassword, doctorReplacement);
+  await doctorPage.waitForURL('**/dashboard');
+  await doctorPage.goto(`${origin}/clinical`);
+  await doctorPage.getByRole('button', { name: 'New clinical visit', exact: true }).click();
+  dialog = doctorPage.getByRole('dialog');
+  await dialog.getByLabel(/^Flock\b/).selectOption({ label: 'Browser Farm Alpha / Browser Flock Renamed' });
+  await dialog.getByLabel(/^Clinical diagnosis\b/).fill('Recorded course-project assessment');
+  await dialog.getByLabel('Visit observations', { exact: true }).fill('Observed findings recorded by clinician');
+  await dialog.getByRole('button', { name: 'Save visit', exact: true }).click();
+  await doctorPage.getByRole('dialog').waitFor({ state: 'hidden' });
+  await doctorPage.getByRole('button', { name: `View visit ${businessDate()}`, exact: true }).click();
+  await doctorPage.getByRole('button', { name: 'New prescription draft', exact: true }).click();
+  dialog = doctorPage.getByRole('dialog');
+  const fillItem = async (index, suffix) => {
+    await dialog.getByLabel(`Item ${index} Medicine name`, { exact: true }).fill(`Browser medicine ${suffix}`);
+    await dialog.getByLabel(`Item ${index} Prescribed dose`, { exact: true }).fill('1');
+    await dialog.getByLabel(`Item ${index} Prescribed unit`, { exact: true }).fill('ml');
+    await dialog.getByLabel(`Item ${index} Start date`, { exact: true }).fill(businessDate());
+    await dialog.getByLabel(`Item ${index} Duration (days)`, { exact: true }).fill('3');
+    await dialog.getByLabel(`Item ${index} Daily times (HH:mm, comma separated)`, { exact: true }).fill('00:00,12:00');
+    await dialog.getByLabel(`Item ${index} Instructions`, { exact: true }).fill('Recorded demonstration instructions only');
+  };
+  await fillItem(1, 'alpha');
+  await dialog.getByRole('button', { name: 'Add prescription item', exact: true }).click();
+  await fillItem(2, 'beta');
+  await dialog.getByLabel('Item 2 Route', { exact: true }).selectOption('feed');
+  await dialog.getByRole('button', { name: 'Preview schedule', exact: true }).click();
+  await dialog.getByRole('heading', { name: '12 scheduled occurrences', exact: true }).waitFor();
+  await dialog.getByRole('button', { name: 'Save prescription draft', exact: true }).click();
+  await doctorPage.getByRole('button', { name: 'Finalize prescription 1', exact: true }).click();
+  await doctorPage.getByRole('heading', { name: /Prescription 1.*finalized/ }).waitFor();
+  await doctorPage.screenshot({ path: resolve(evidence, 'clinical-prescription-desktop.png'), fullPage: true, animations: 'disabled' });
+  await doctorPage.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await doctorPage.goto(`${origin}/medication`);
+  await doctorPage.getByRole('button', { name: 'View task Browser medicine alpha', exact: true }).first().click();
+  await doctorPage.getByText('You prescribed this task. Another authorized person must record or correct its outcome.', { exact: true }).waitFor();
+  assert.equal(await doctorPage.getByRole('button', { name: 'Record outcome', exact: true }).count(), 0);
+  await doctorPage.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+
+  await staffPage.goto(`${origin}/medication`);
+  await staffPage.getByRole('button', { name: 'View task Browser medicine alpha', exact: true }).first().click();
+  dialog = staffPage.getByRole('dialog');
+  await dialog.getByLabel('Actual administered dose', { exact: true }).fill('1');
+  await dialog.getByLabel('Actual dose unit', { exact: true }).fill('ml');
+  await dialog.getByLabel('Administration comments', { exact: true }).fill('Independently recorded administration');
+  await dialog.getByRole('button', { name: 'Record outcome', exact: true }).click();
+  await staffPage.getByRole('dialog').waitFor({ state: 'hidden' });
+  await staffPage.getByLabel('Medication view', { exact: true }).selectOption('history');
+  await staffPage.getByRole('button', { name: 'View task Browser medicine alpha', exact: true }).click();
+  await staffPage.getByRole('heading', { name: 'Effective outcome: completed', exact: true }).waitFor();
+  await staffPage.screenshot({ path: resolve(evidence, 'medication-outcome-mobile.png'), fullPage: true, animations: 'disabled' });
+  assert(await staffPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+  await staffPage.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+
+  await page.goto(`${origin}/medication`);
+  await page.getByLabel('Medication view', { exact: true }).selectOption('history');
+  await page.getByRole('button', { name: 'View task Browser medicine alpha', exact: true }).click();
+  await page.getByRole('button', { name: 'Correct outcome', exact: true }).click();
+  await page.getByLabel('Administration outcome', { exact: true }).selectOption('missed');
+  await page.getByLabel(/^Outcome reason\b/).fill('Correction after independent review');
+  await page.getByRole('button', { name: 'Save outcome correction', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'View task Browser medicine alpha', exact: true }).click();
+  await page.getByText('Administration evidence (2)', { exact: true }).click();
+  await page.getByRole('heading', { name: /Event 1.*completed/ }).waitFor();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await page.goto(`${origin}/clinical`);
+  await page.getByRole('button', { name: `View visit ${businessDate()}`, exact: true }).click();
+  await page.getByRole('button', { name: 'Replace prescription 1', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  const nextDay = new Date(Date.parse(businessDate()) + 86400000).toISOString().slice(0, 10);
+  for (const index of [1, 2]) {
+    await dialog.getByLabel(`Item ${index} Start date`, { exact: true }).fill(nextDay);
+    await dialog.getByLabel(`Item ${index} Daily times (HH:mm, comma separated)`, { exact: true }).fill('08:00');
+  }
+  await dialog.getByLabel(/^Replacement reason\b/).fill('Replace future occurrences only');
+  await dialog.getByRole('button', { name: 'Preview schedule', exact: true }).click();
+  await dialog.getByRole('heading', { name: '6 scheduled occurrences', exact: true }).waitFor();
+  await dialog.getByRole('button', { name: 'Finalize replacement', exact: true }).click();
+  await page.getByRole('heading', { name: /Prescription 2.*finalized/ }).waitFor();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await page.goto(`${origin}/users`);
+
+  await page.goto(`${origin}/daily-reports`);
+  await page.getByRole('button', { name: `View report ${businessDate()}`, exact: true }).click();
+  await page.getByLabel('Submission or return reason', { exact: true }).fill('Link existing clinical evidence');
+  await page.getByRole('button', { name: 'Return for correction', exact: true }).click();
+  await page.getByText(/Returned: Link existing clinical evidence/).waitFor();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await page.goto(`${origin}/daily-reports`);
+  await page.getByRole('button', { name: `View report ${businessDate()}`, exact: true }).click();
+  await page.getByRole('button', { name: 'Edit draft', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Linked clinical visit', { exact: true }).selectOption({ label: `${businessDate()} - Recorded course-project assessment` });
+  await dialog.getByLabel('Medicine 1 prescription', { exact: true }).selectOption({ label: 'Prescription 1 - cancelled' });
+  await dialog.getByLabel('Medicine 1 administration evidence', { exact: true }).selectOption({ label: `Browser medicine alpha - missed - ${businessDate()}` });
+  await dialog.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: `View report ${businessDate()}`, exact: true }).click();
+  await page.getByLabel('Submission or return reason', { exact: true }).fill('Linked existing visit and immutable outcome');
+  await page.getByRole('button', { name: 'Submit report', exact: true }).click();
+  await page.getByRole('button', { name: 'Revision 3', exact: true }).waitFor();
+  await page.getByText(/Administration event linked/).waitFor();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await staffPage.goto(`${origin}/medication`);
+  await page.goto(`${origin}/users`);
+  console.log('PASS: Doctor schedule preview/finalization, prescriber restriction, independent administration, immutable correction and future replacement.');
+
+
 
   await page.getByRole('button', { name: 'Assign sites and farms to Browser Staff', exact: true }).click();
   await page.getByRole('dialog').getByLabel('Browser Farm Alpha', { exact: true }).uncheck();
@@ -300,7 +428,7 @@ try {
   await staffPage.reload();
   await staffPage.waitForURL('**/login');
   await login(staffPage, 'browser-staff@layerflow.test', staffReplacement);
-  await staffPage.waitForURL(/\/(dashboard|organization\/farms|mortality)$/);
+  await staffPage.waitForURL(/\/(dashboard|organization\/farms|mortality|medication)$/);
   await staffPage.goto(`${origin}/organization/farms`);
   await staffPage.getByRole('heading', { name: 'No farms found', exact: true }).waitFor();
   await staffPage.getByTitle('Choose working area', { exact: true }).click();
@@ -315,7 +443,7 @@ try {
   await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
   assert.deepEqual(errors, []);
   console.log('PASS: logout survives refresh; no browser runtime errors.');
-  console.log('Browser verification passed. Screenshots include roles-desktop, users-mobile, organization-desktop, farm-scope-mobile, daily-report-desktop, measurements-mobile and mortality-mobile under .data/verification/.');
+  console.log('Browser verification passed. Screenshots include roles-desktop, users-mobile, organization-desktop, farm-scope-mobile, daily-report-desktop, measurements-mobile mortality-mobile, clinical-prescription-desktop and medication-outcome-mobile under .data/verification/.');
 } catch (error) {
   if (inspectionPage && !inspectionPage.isClosed()) {
     await inspectionPage.screenshot({ path: resolve(evidence, 'browser-failure.png'), fullPage: true }).catch(() => {});

@@ -1,5 +1,6 @@
 import { organizationRouter, assignScope } from './modules/organization/routes.js';
 import { reportRouter, populationRouter, measurementRouter, controller as reportController } from './modules/reports/routes.js';
+import { visitsRouter, prescriptionsRouter, medicationRouter } from './modules/clinical/routes.js';
 import { permission } from './middleware/auth.js';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
@@ -57,6 +58,9 @@ export function createApp(config) {
   app.get('/api/v1/mortality', permission('mortality.view'), reportController.mortality);
   app.use('/api/v1/flocks', populationRouter);
   app.use('/api/v1/bird-measurements', measurementRouter);
+  app.use('/api/v1/clinical-visits', visitsRouter);
+  app.use('/api/v1/prescriptions', prescriptionsRouter);
+  app.use('/api/v1/medication-tasks', medicationRouter);
   app.use((req, res, next) => next(new AppError(404, 'NOT_FOUND', 'Endpoint not found.')));
   app.use(errorHandler);
   return app;

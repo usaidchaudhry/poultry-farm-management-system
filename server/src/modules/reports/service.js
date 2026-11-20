@@ -1,3 +1,4 @@
+import { assertReportLinks } from '../clinical/report-links.js';
 import { randomUUID } from 'node:crypto';
 import { DailyReport as R, ReportRevision as V, BirdMovement as B, BirdMeasurement as W, PublicationIntent as I, flockScope } from './models.js';
 import { eggKeys } from './validation.js';
@@ -50,6 +51,7 @@ export async function population(flock, date, session = null) {
   return { openingBirds: opening, approvedChange: changes, availableBirds: opening + changes, gap, previousReportDate: prior?.businessDate || null, movements: today.map(serialize) };
 }
 async function calculate(actor, flock, date, data, session, submitting = false, validating = true) {
+  if (validating) await assertReportLinks(actor, flock._id, date, data, session);
   const pop = await population(flock, date, session);
   const errors = {};
   if (submitting) {

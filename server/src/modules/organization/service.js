@@ -6,6 +6,7 @@ import { assertVersion } from '../../lib/validation.js';
 import { AppError, notFound, denied } from '../../lib/errors.js';
 import { P } from '../access/catalog.js';
 import { DailyReport, BirdMovement, openingMovement } from '../reports/models.js';
+import { MedicationTask, Prescription } from '../clinical/models.js';
 
 export const kinds = ['site', 'farm', 'house', 'flock'];
 const parentKind = (kind) => kinds[kinds.indexOf(kind) - 1];
@@ -66,6 +67,7 @@ export async function mutate(caller, kind, id, input, requestId, action) {
       assertVersion(record, input.version); before = publicEntity(record);
       if (action === 'status') {
         if (input.archived) {
+          if (kind === 'flock' && (await MedicationTask.exists({ flockId: record._id, state: 'open' }).session(session) || await Prescription.exists({ flockId: record._id, status: 'draft' }).session(session))) throw new AppError(409, 'UNRESOLVED_CLINICAL_WORK', 'Resolve open medication tasks and draft prescriptions before archiving.');
           if (kind === 'flock' && await DailyReport.exists({ flockId: record._id, status: { $in: ['draft', 'returned'] } }).session(session)) throw new AppError(409, 'UNSUBMITTED_WORK', 'Submit unfinished reports before archiving this flock.');
           const child = kinds[kinds.indexOf(kind) + 1];
           if (child && await M[child].exists({ [`${kind}Id`]: record._id, status: 'active' }).session(session)) throw new AppError(409, 'ACTIVE_CHILDREN', 'Archive active children first.');

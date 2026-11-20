@@ -1,0 +1,17 @@
+import * as service from './service.js';
+import { parse } from '../../lib/validation.js';
+import { queryInput, taskQuery } from './validation.js';
+export const visits = async (req, res) => res.json(await service.listVisits(req.actor, parse(queryInput, req.query)));
+export const visit = async (req, res) => res.json({ data: await service.visitDetail(req.actor, req.params.id) });
+export const createVisit = async (req, res) => res.status(201).json({ data: await service.saveVisit(req.actor, null, req.input, req.id) });
+export const editVisit = async (req, res) => res.json({ data: await service.saveVisit(req.actor, req.params.id, req.input, req.id) });
+export const preview = async (req, res) => res.json({ data: await service.preview(req.actor, req.params.id, req.input) });
+export const createPrescription = async (req, res) => res.status(201).json({ data: await service.savePrescription(req.actor, null, req.params.id, req.input, req.id) });
+export const editPrescription = async (req, res) => res.json({ data: await service.savePrescription(req.actor, req.params.id, null, req.input, req.id) });
+export const finalize = async (req, res) => res.json({ data: await service.finalize(req.actor, req.params.id, req.input, req.id) });
+export const cancel = async (req, res) => res.json({ data: await service.cancelOrReplace(req.actor, req.params.id, req.input, false, req.id) });
+export const replace = async (req, res) => res.status(201).json({ data: await service.cancelOrReplace(req.actor, req.params.id, req.input, true, req.id) });
+export const tasks = async (req, res) => res.json(await service.listTasks(req.actor, parse(taskQuery, req.query)));
+export const task = async (req, res) => res.json({ data: await service.taskDetail(req.actor, req.params.id) });
+export const outcome = async (req, res) => res.status(201).json({ data: await service.recordOutcome(req.actor, req.params.id, req.input, false, req.id) });
+export const correct = async (req, res) => res.status(201).json({ data: await service.recordOutcome(req.actor, req.params.id, req.input, true, req.id) });

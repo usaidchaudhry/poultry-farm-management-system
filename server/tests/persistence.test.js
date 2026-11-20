@@ -14,8 +14,9 @@ import { hierarchyModels as H } from '../src/modules/organization/models.js';
 import { User, Role } from '../src/modules/access/models.js';
 import { businessDate } from '../src/policies/dates.js';
 import { BirdMovement, PublicationIntent } from '../src/modules/reports/models.js';
+import { MedicationTask, AdministrationEvent } from '../src/modules/clinical/models.js';
 
-test('development database files, roles, user, hierarchy, assignments, and authenticated session survive a full MongoDB restart', { timeout: 120000 }, async () => {
+test('database hierarchy, reports, clinical tasks/outcomes, assignments and authenticated session survive a full MongoDB restart', { timeout: 120000 }, async () => {
   const root = resolve('../.data/verification');
   await mkdir(root, { recursive: true });
   const dbPath = await mkdtemp(`${root}${sep}persistence-`);
@@ -41,6 +42,22 @@ test('development database files, roles, user, hierarchy, assignments, and authe
     const measurement = (await write('/bird-measurements', { flockId: flock.id, measuredAt: new Date().toISOString(), sampleSize: 10, averageWeight: 1.6, unit: 'kg' }).expect(201)).body.data;
     const report = (await write('/daily-reports', { flockId: flock.id, businessDate: businessDate(), data: { eggs: { jumbo: 0, starter: 0, standard: 80, small: 0, floor: 0, broken: 0, discard: 0 }, mortality: 1, feed: { bags: 0, bagSizeKg: 0, additionalKg: 0 }, waterLitres: 0, lightHours: 0, measurementId: measurement.id } }).expect(201)).body.data;
     await write(`/daily-reports/${report.id}/submit`, { version: report.version }).expect(200);
+    const visit = (await write('/clinical-visits', { flockId: flock.id, occurredAt: new Date().toISOString(), diagnosis: 'Persistent recorded clinical assessment' }).expect(201)).body.data;
+    const prescription = (await write(`/clinical-visits/${visit.id}/prescriptions`, { items: [{ key: 'persistent-item', medicine: 'Recorded demonstration item', instructions: 'Follow recorded instructions', route: 'water', startDate: businessDate(), durationDays: 3, times: ['00:00'] }] }).expect(201)).body.data;
+    await write(`/prescriptions/${prescription.id}/finalize`, { version: 1 }).expect(200);
+    const firstTask = await MedicationTask.findOne({ prescriptionId: prescription.id }).sort({ dueAt: 1 });
+    // Separate actor fixture proves independent persisted evidence; its temporary
+    // password is never published and this isolated DB is removed after the test.
+    const staff = (await write('/users', { name: 'Persistence Staff', email: 'persistent-staff@layerflow.test', password: initial }).expect(201)).body.data;
+    const role = await Role.findOne({ code: 'farm_manager' });
+    await agent.put(`/api/v1/users/${staff.id}/role`).set('X-CSRF-Token', changed.body.data.csrfToken).send({ version: staff.version, roleId: String(role._id) }).expect(200);
+    const staffRecord = await User.findById(staff.id);
+    await agent.put(`/api/v1/users/${staff.id}/scope`).set('X-CSRF-Token', changed.body.data.csrfToken).send({ version: staffRecord.version, siteIds: [], farmIds: [farm.id] }).expect(200);
+    const staffAgent = request.agent(createApp(config));
+    const staffCsrf = (await staffAgent.get('/api/v1/auth/csrf')).body.data.csrfToken;
+    const staffLogin = (await staffAgent.post('/api/v1/auth/login').set('X-CSRF-Token', staffCsrf).send({ email: staff.email, password: initial }).expect(200)).body.data;
+    const staffChange = (await staffAgent.post('/api/v1/auth/change-password').set('X-CSRF-Token', staffLogin.csrfToken).send({ currentPassword: initial, newPassword: next }).expect(200)).body.data;
+    await staffAgent.post(`/api/v1/medication-tasks/${firstTask._id}/outcomes`).set('X-CSRF-Token', staffChange.csrfToken).send({ version: 1, outcome: 'missed', actualAt: new Date().toISOString(), reason: 'Independent persisted outcome' }).expect(201);
     await mongoose.disconnect();
     await replica.stop({ doCleanup: false });
     replica = await createDevelopmentDatabase({ dbPath, port, name: 'layerflow_persistence_test' });
@@ -49,7 +66,7 @@ test('development database files, roles, user, hierarchy, assignments, and authe
     const restored = await request(createApp(config)).get('/api/v1/auth/me').set('Cookie', cookie).expect(200);
     assert.equal(restored.body.data.id, owner.id);
     assert.equal(restored.body.data.mustChangePassword, false);
-    assert.equal(await User.countDocuments(), 1);
+    assert.equal(await User.countDocuments(), 2);
     assert.equal(await Role.countDocuments(), 5);
     assert.equal(await H.farm.countDocuments(), 1);
     assert.deepEqual(restored.body.data.farmIds, [farm.id]);
@@ -62,6 +79,13 @@ test('development database files, roles, user, hierarchy, assignments, and authe
     assert.equal(reportRestored.summary.measurement.grams, 1600);
     assert.equal(await BirdMovement.countDocuments({ flockId: flock.id }), 2);
     assert.equal(await PublicationIntent.countDocuments({ reportId: report.id }), 1);
+    const clinicalRestored = (await request(createApp(config)).get(`/api/v1/clinical-visits/${visit.id}`).set('Cookie', cookie).expect(200)).body.data;
+    assert.equal(clinicalRestored.prescriptions[0].status, 'finalized');
+    assert.equal(await MedicationTask.countDocuments({ prescriptionId: prescription.id }), 3);
+    const taskRestored = (await request(createApp(config)).get(`/api/v1/medication-tasks/${firstTask._id}`).set('Cookie', cookie).expect(200)).body.data;
+    assert.equal(taskRestored.state, 'missed');
+    assert.equal(taskRestored.events[0].recordedBy, staff.id);
+    assert.equal(await AdministrationEvent.countDocuments(), 1);
   } finally {
     await mongoose.disconnect();
     if (replica) await replica.stop({ doCleanup: false });

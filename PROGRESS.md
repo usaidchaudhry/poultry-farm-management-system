@@ -111,7 +111,7 @@ Plan: `LayerFlow_MERN_PRD.md`. Detailed implementation log, data dictionary, dec
 - [x] Final verification: 17 backend checks, 9 original mock checks, browser workflow, production build, documentation links, and 39 server-file syntax checks passed. Local screenshots were reviewed; details and commands are in the implementation log.
 - [x] MERN Phase 3: persistent organization hierarchy, archive/occupancy rules, user site/farm assignment, and live farm selection. See `docs/MERN_PHASE_3_IMPLEMENTATION.md` for the implementation steps, schema/API, decisions, optional two-farm demo seed, and verification.
 
-Boundary: no public signup or default live account password. Configure private server environment values and run the bootstrap command described in README. Site/farm data is now live; daily reports and measurements are now live; remaining operational modules start at Phase 5; their historical mock completion does not mean full-stack completion.
+Boundary: no public signup or default live account password. Configure private server environment values and run the bootstrap command described in README. Site/farm data is now live; daily reports and measurements are now live; clinical visits and medication are also live; remaining operational modules start at Phase 6; their historical mock completion does not mean full-stack completion.
 
 
 ### MERN Phase 3 completion (20 November 2026)
@@ -139,6 +139,22 @@ The earlier frontend Phase 5 assumptions are historical. Live MERN Phase 3 super
 - [x] Draft/returned report archive protection, active-context guards, current-bird capacity checks, and readable invalidated drafts.
 - [x] MongoDB/API/concurrency/migration/restart checks and clean-browser Owner/assigned-manager reporting workflow, including phone-width pages.
 - [x] Final Phase 4 verification: 32 backend checks, 9 mock checks, browser workflow, production build, 49 server syntax checks, documentation links, and whitespace checks passed. Report and mobile screenshots were reviewed.
-- [ ] MERN Phase 5: clinical visits, prescriptions, medication tasks, and independent administration.
+- [x] MERN Phase 5: clinical visits, prescriptions, medication tasks, and independent administration. See `docs/MERN_PHASE_5_IMPLEMENTATION.md`.
 
 Publication boundary: every submitted report revision records one deferred egg/feed intent. Inventory references are interim text identifiers; actual inventory/egg ledger posting and negative-stock corrections belong to Phases 6/8. Visit/prescription links and image attachments remain Phase 5/9 dependencies. The full contract and verification evidence are in the Phase 4 log.
+
+
+### MERN Phase 5 completion (20 November 2026)
+
+- [x] Visit, prescription, recurring task, and append-only administration-event schemas; repeatable indexes/migration and stable item/occurrence keys.
+- [x] Visit entry/edit, measurement links, multiple medicine items, explicit daily clock times, bounded timezone-aware schedule preview, and atomic finalization.
+- [x] Original prescriber preserved through another finalizer; server-side prescriber denial on initial outcomes and every correction, independent of role grants.
+- [x] Completed/missed evidence, actual/recorded times, actual dose/unit or instruction reference, reasons, optimistic versions, append-only superseding corrections and audit.
+- [x] Draft/future cancellation, linked replacement prescriptions, completed/elapsed evidence preservation, no automatic administration by elapsed duration, and archive guards.
+- [x] Clinical history separate from operational report restrictions; scoped current open-work exception, restricted closed history, and direct-route farm/ancestor checks.
+- [x] Live asynchronous Clinical/Medication pages, multi-item forms, schedule preview, open/history filtering, evidence details, phone-width workflow, and optional daily-report clinical links.
+- [x] Actual database, concurrency, DST, restart-persistence and browser Doctor-to-Farm-Manager checks; implementation log, README, and repository guidance updated.
+- [x] Final Phase 5 verification: 44 backend checks, 9 mock checks, clean-browser workflow, production build, 56 server syntax checks, documentation links, and whitespace checks passed; clinical and mobile administration screenshots reviewed.
+- [ ] MERN Phase 6: location-based inventory, balances, immutable movements, and daily-report feed publication.
+
+Phase 5 boundaries: image uploads remain Phase 9. Medication administration does not automatically issue stock; the Phase 4 egg/feed publication intents still await the Phases 6/8 ledgers. Daily-report clinical references link existing evidence without creating another administration.
