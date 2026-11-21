@@ -1,0 +1,14 @@
+import { z, id, version, displayName } from '../../lib/validation.js';
+import { calendarDate } from '../reports/validation.js';
+import { Decimal } from '../../lib/decimal.js';
+const decimal = (places) => z.union([z.string().regex(/^\d+(\.\d+)?$/, 'Use a positive decimal without separators.'), z.number().finite()]).transform(String).refine((v) => { const d = new Decimal(v); return d.gt(0) && d.lte(1e9) && d.decimalPlaces() <= places; }, `Use a positive value up to 1,000,000,000 with at most ${places} decimal places.`);
+export const kg = decimal(3);
+const row = z.object({ key: z.string().regex(/^[\w-]{1,80}$/), itemId: id, kg }).strict();
+export const composition = z.object({ name: displayName, businessDate: calendarDate, feedType: z.string().trim().max(100).default(''), strain: z.string().trim().max(100).default(''), bagSizeKg: kg.default('50'), rows: z.array(row).min(1).max(100).refine((rows) => new Set(rows.map((r) => r.key)).size === rows.length, 'Ingredient row keys must be distinct.') }).strict();
+export const create = composition.extend({ farmId: id, code: z.string().trim().min(2).max(50) });
+export const edit = composition.extend({ version });
+export const action = z.object({ version }).strict();
+export const reasonAction = action.extend({ reason: z.string().trim().min(3).max(1000) });
+export const revise = reasonAction.extend({ businessDate: calendarDate });
+export const pricing = action.extend({ rates: z.array(z.object({ key: z.string().regex(/^[\w-]{1,80}$/), rate: decimal(4) }).strict()).min(1).max(100) });
+export const query = z.object({ farmId: id.optional(), formulaId: id.optional(), status: z.enum(['draft', 'pending_costing', 'returned', 'finalized']).optional(), view: z.enum(['history', 'pending']).default('history'), archived: z.enum(['true', 'false']).default('false'), from: calendarDate.optional(), to: calendarDate.optional(), page: z.coerce.number().int().min(1).max(10000).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20) }).strict();

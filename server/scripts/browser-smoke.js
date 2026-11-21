@@ -469,6 +469,81 @@ try {
   await page.goto(`${origin}/users`);
   console.log('PASS: live inventory catalog, receipt/issue/transfer, reconciliation, report feed deduction and phone-width balances.');
 
+  await page.goto(`${origin}/inventory`);
+  for (const name of ['Browser maize', 'Browser soybean']) {
+    await page.getByRole('button', { name: 'New inventory item', exact: true }).click();
+    dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Name', { exact: true }).fill(name);
+    await dialog.getByLabel('Category', { exact: true }).selectOption('ingredient');
+    await dialog.getByRole('button', { name: 'Save stock changes', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+  }
+  await staffPage.goto(`${origin}/feed-formulas`);
+  await staffPage.getByRole('button', { name: 'New feed formula', exact: true }).click();
+  dialog = staffPage.getByRole('dialog');
+  await dialog.getByLabel('Formula code', { exact: true }).fill('BROWSER-LF');
+  await dialog.getByLabel('Formula name', { exact: true }).fill('Browser layer ration');
+  await dialog.getByLabel('Formula farm', { exact: true }).selectOption({ label: 'Browser Farm Alpha' });
+  await dialog.getByLabel('Ingredient 1', { exact: true }).selectOption({ label: 'Browser maize' });
+  await dialog.getByLabel('Ingredient 1 kg', { exact: true }).fill('60');
+  await dialog.getByRole('button', { name: 'Add ingredient', exact: true }).click();
+  await dialog.getByLabel('Ingredient 2', { exact: true }).selectOption({ label: 'Browser soybean' });
+  await dialog.getByLabel('Ingredient 2 kg', { exact: true }).fill('40');
+  await dialog.getByRole('button', { name: 'Save composition', exact: true }).click();
+  await staffPage.getByRole('heading', { name: 'BROWSER-LF - Version 1', exact: true }).waitFor();
+  await staffPage.getByRole('button', { name: 'Submit for costing', exact: true }).click();
+  await staffPage.getByText(/pending_costing - Record version/).waitFor();
+  assert.equal(await staffPage.getByRole('button', { name: 'Save rates', exact: true }).count(), 0);
+  await staffPage.screenshot({ path: resolve(evidence, 'formula-composition-mobile.png'), fullPage: true, animations: 'disabled' });
+  await staffPage.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+
+  const operationPassword = randomBytes(24).toString('hex'); const operationReplacement = randomBytes(24).toString('hex');
+  await page.goto(`${origin}/users`);
+  await page.getByRole('button', { name: 'Add user', exact: true }).click();
+  await page.getByLabel(/^Full name\b/).fill('Browser Operator');
+  await page.getByLabel(/^Email\b/).fill('browser-operator@layerflow.test');
+  await page.getByLabel(/^Temporary password\b/).fill(operationPassword);
+  await page.getByRole('button', { name: 'Create user', exact: true }).click();
+  await page.getByRole('button', { name: 'Change role for Browser Operator', exact: true }).click();
+  await page.getByLabel('Role', { exact: true }).last().selectOption({ label: 'Operation Manager' });
+  await page.getByRole('button', { name: 'Save role', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Assign sites and farms to Browser Operator', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('Browser Farm Alpha', { exact: true }).check();
+  await page.getByRole('button', { name: 'Save assignments', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  const operationContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const operationPage = await operationContext.newPage(); operationPage.on('pageerror', (error) => errors.push(error.message)); inspectionPage = operationPage;
+  await login(operationPage, 'browser-operator@layerflow.test', operationPassword);
+  await change(operationPage, operationPassword, operationReplacement);
+  await operationPage.waitForURL('**/dashboard');
+  await operationPage.goto(`${origin}/feed-formulas`);
+  await operationPage.getByLabel('Formula view', { exact: true }).selectOption('pending');
+  await operationPage.getByRole('button', { name: 'View BROWSER-LF v1', exact: true }).click();
+  await operationPage.getByLabel(/^Rate 1 \(PKR\/kg\)/).fill('10');
+  await operationPage.getByLabel(/^Rate 2 \(PKR\/kg\)/).fill('20');
+  await operationPage.getByRole('button', { name: 'Preview costing', exact: true }).click();
+  await operationPage.getByRole('heading', { name: 'Unsaved server costing preview', exact: true }).waitFor();
+  await operationPage.getByText('1400.00', { exact: true }).waitFor();
+  await operationPage.getByText('700.00', { exact: true }).waitFor();
+  await operationPage.getByRole('button', { name: 'Save rates', exact: true }).click();
+  await operationPage.getByRole('heading', { name: 'Saved costing preview', exact: true }).waitFor();
+  await operationPage.getByRole('button', { name: 'Finalize costing', exact: true }).click();
+  await operationPage.getByRole('heading', { name: 'Finalized costing snapshot', exact: true }).waitFor();
+  await operationPage.screenshot({ path: resolve(evidence, 'formula-costing-desktop.png'), fullPage: true, animations: 'disabled' });
+  await staffPage.reload();
+  await staffPage.getByRole('button', { name: 'View BROWSER-LF v1', exact: true }).click();
+  assert.equal((await staffPage.getByRole('dialog').innerText()).includes('PKR'), false);
+  await staffPage.getByLabel('Formula action reason', { exact: true }).fill('Plan next composition version');
+  await staffPage.getByRole('button', { name: 'Create new draft version', exact: true }).click();
+  await staffPage.getByRole('heading', { name: 'BROWSER-LF - Version 2', exact: true }).waitFor();
+  await staffPage.getByRole('button', { name: 'Version 1 - finalized', exact: true }).click();
+  await staffPage.getByRole('heading', { name: 'BROWSER-LF - Version 1', exact: true }).waitFor();
+  assert.equal((await staffPage.getByRole('dialog').innerText()).includes('PKR'), false);
+  await staffPage.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await staffPage.goto(`${origin}/medication`); inspectionPage = page;
+  console.log('PASS: Farm Manager composition, Operation Manager pricing/finalization, exact worked example, redacted pricing and preserved revision history.');
+
 
 
   await page.getByRole('button', { name: 'Assign sites and farms to Browser Staff', exact: true }).click();

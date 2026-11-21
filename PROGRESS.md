@@ -168,6 +168,20 @@ Phase 5 boundaries: image uploads remain Phase 9. Medication administration does
 - [x] Live asynchronous inventory filters/forms/pagination/reconciliation and scoped report stock selectors; preserved explicit mock demo and immutable legacy snapshots.
 - [x] Actual MongoDB/API concurrency and rollback checks, restart persistence, clean-browser receipt/issue/transfer/report workflow and phone-width balance review.
 - [x] Phase 6 verification: 51 backend checks, 9 mock checks, clean-browser workflow, production build, 61 server syntax checks, documentation links and whitespace checks passed.
-- [ ] MERN Phase 7: feed composition, versioned costing, and permission-separated handoff.
+- [x] MERN Phase 7: feed composition, versioned costing, and permission-separated handoff. See `docs/MERN_PHASE_7_IMPLEMENTATION.md`.
 
 Phase 6 supersedes the historical feed deferral above. Egg intents remain deferred until Phase 8. Existing descriptive feed reports are not automatically charged; selecting real stock and submitting their first stock-enabled revision issues the full selected quantity. No medication-to-stock conversion or durable low-stock notification delivery was added.
+
+### MERN Phase 7 completion (22 November 2026)
+
+- [x] Logical formulas, numbered composition versions, stable row identities, separate confidential pricing, immutable finalized snapshots, durable request deduplication and repeatable migration.
+- [x] Compose/save/submit, pending-costing queue, exact server preview, complete rate entry, separate finalization, reasoned return/reset, new unpriced draft revisions and completed-formula archive.
+- [x] Decimal128 quantities/rates/money, 28-digit half-up arithmetic, summed rounded row amounts, four-place cost/kg and bag costing from the unrounded ratio.
+- [x] Scope/date/context/catalog guards, optimistic versions, active-grant rechecks, strict price injection rejection, cost-redacted list/detail/version/mutation responses and price-free audit metadata.
+- [x] Live asynchronous formula UI, catalog ingredient rows, price-permission controls, saved/unsaved preview states, unsaved-rate finalization guard, version history, filters and pagination; explicit mock mode preserved.
+- [x] Worked example, precision, missing rates, return/resubmit, stale edits, concurrent finalization, privacy/grant revocation, retry deduplication, snapshot preservation and full database-restart checks.
+- [x] Separate Farm Manager/Operation Manager browser handoff with mobile composition, preview/save/finalize, hidden prices and new draft/history navigation.
+- [x] Verification: 57 backend checks, 9 mock checks, clean-browser workflow, production build, 66 server syntax checks, documentation links and whitespace checks passed; final focused formula/restart checks also passed.
+- [ ] MERN Phase 8: egg stock publication, sales, and basic finance.
+
+Phase 7 implementation and verification are complete. Formulas do not manufacture feed, consume inventory, or create expenses. Egg posting/sales remain Phase 8; durable pending-costing reminders remain Phase 9.

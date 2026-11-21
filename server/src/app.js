@@ -2,6 +2,7 @@ import { organizationRouter, assignScope } from './modules/organization/routes.j
 import { reportRouter, populationRouter, measurementRouter, controller as reportController } from './modules/reports/routes.js';
 import { visitsRouter, prescriptionsRouter, medicationRouter } from './modules/clinical/routes.js';
 import { inventoryRouter } from './modules/inventory/routes.js';
+import { formulaRouter } from './modules/formulas/routes.js';
 import { permission } from './middleware/auth.js';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
@@ -63,6 +64,7 @@ export function createApp(config) {
   app.use('/api/v1/prescriptions', prescriptionsRouter);
   app.use('/api/v1/medication-tasks', medicationRouter);
   app.use('/api/v1/inventory', inventoryRouter);
+  app.use('/api/v1/feed-formulas', formulaRouter);
   app.use((req, res, next) => next(new AppError(404, 'NOT_FOUND', 'Endpoint not found.')));
   app.use(errorHandler);
   return app;

@@ -16,6 +16,7 @@ import { businessDate } from '../src/policies/dates.js';
 import { BirdMovement, PublicationIntent } from '../src/modules/reports/models.js';
 import { MedicationTask, AdministrationEvent } from '../src/modules/clinical/models.js';
 import { StockLocation, StockBalance, StockMovement, FeedPublication } from '../src/modules/inventory/models.js';
+import { FormulaSnapshot } from '../src/modules/formulas/models.js';
 
 test('database hierarchy, reports, clinical tasks/outcomes, assignments and authenticated session survive a full MongoDB restart', { timeout: 120000 }, async () => {
   const root = resolve('../.data/verification');
@@ -63,6 +64,11 @@ test('database hierarchy, reports, clinical tasks/outcomes, assignments and auth
     const staffLogin = (await staffAgent.post('/api/v1/auth/login').set('X-CSRF-Token', staffCsrf).send({ email: staff.email, password: initial }).expect(200)).body.data;
     const staffChange = (await staffAgent.post('/api/v1/auth/change-password').set('X-CSRF-Token', staffLogin.csrfToken).send({ currentPassword: initial, newPassword: next }).expect(200)).body.data;
     await staffAgent.post(`/api/v1/medication-tasks/${firstTask._id}/outcomes`).set('X-CSRF-Token', staffChange.csrfToken).send({ version: 1, outcome: 'missed', actualAt: new Date().toISOString(), reason: 'Independent persisted outcome' }).expect(201);
+    const ingredient = (await write('/inventory/items', { name: 'Persistent ingredient', category: 'ingredient', unit: 'kg' }).expect(201)).body.data;
+    let formula = (await agent.post('/api/v1/feed-formulas').set('X-CSRF-Token', changed.body.data.csrfToken).set('Idempotency-Key', randomBytes(20).toString('hex')).send({ farmId: farm.id, code: 'PERSIST', name: 'Persistent formula', businessDate: businessDate(), rows: [{ key: 'persist-row', itemId: ingredient.id, kg: '100' }] }).expect(201)).body.data;
+    formula = (await write(`/feed-formulas/${formula.id}/submit`, { version: formula.version }).expect(200)).body.data;
+    formula = (await agent.put(`/api/v1/feed-formulas/${formula.id}/pricing`).set('X-CSRF-Token', changed.body.data.csrfToken).send({ version: formula.version, rates: [{ key: 'persist-row', rate: '14' }] }).expect(200)).body.data;
+    formula = (await write(`/feed-formulas/${formula.id}/finalize`, { version: formula.version }).expect(200)).body.data;
     await mongoose.disconnect();
     await replica.stop({ doCleanup: false });
     replica = await createDevelopmentDatabase({ dbPath, port, name: 'layerflow_persistence_test' });
@@ -94,6 +100,9 @@ test('database hierarchy, reports, clinical tasks/outcomes, assignments and auth
     assert.equal((await StockBalance.findOne({ itemId: item.id, locationId: store._id })).amount, 100000);
     assert.equal(await StockMovement.countDocuments({ itemId: item.id }), 1);
     assert.equal(await FeedPublication.countDocuments({ reportId: report.id }), 1);
+    const formulaRestored = (await request(createApp(config)).get(`/api/v1/feed-formulas/${formula.id}`).set('Cookie', cookie).expect(200)).body.data;
+    assert.equal(formulaRestored.status, 'finalized'); assert.equal(formulaRestored.costing.totalCost, '1400.00'); assert.equal(formulaRestored.costing.costPerBag, '700.00');
+    assert.equal(await FormulaSnapshot.countDocuments({ versionId: formula.id }), 1);
   } finally {
     await mongoose.disconnect();
     if (replica) await replica.stop({ doCleanup: false });

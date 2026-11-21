@@ -21,6 +21,7 @@ import { localInstant, occurrences } from '../src/modules/clinical/schedule.js';
 import { hierarchyModels as H } from '../src/modules/organization/models.js';
 import { randomUUID } from 'node:crypto';
 import { inventoryModels, InventoryItem, StockLocation, StockBalance, StockMovement, StockOperation, FeedPublication } from '../src/modules/inventory/models.js';
+import { formulaModels, FeedFormula, FormulaVersion, FormulaPricing, FormulaSnapshot } from '../src/modules/formulas/models.js';
 
 const initialPassword = 'Temporary-test-password-123';
 const changedPassword = 'Changed-test-password-456';
@@ -67,6 +68,7 @@ before(async () => {
 
 beforeEach(async () => {
   reportStock = null;
+  for (const model of formulaModels) await model.deleteMany({});
   for (const model of inventoryModels) await model.deleteMany({});
   for (const model of clinicalModels) await model.deleteMany({});
   for (const model of reportModels) await model.deleteMany({});
@@ -898,4 +900,130 @@ test('daily-report clinical links validate source scope, dates, ancestry and gra
   const role = await Role.findOne({ code: 'farm_manager' });
   await admin.send('patch', `/roles/${role._id}`, { version: role.version, name: role.name, description: role.description, scopeMode: 'assigned', permissions: role.permissions.filter((p) => !['clinical.view', 'medication.view'].includes(p)) });
   await f.manager.send('patch', `/daily-reports/${report.id}`, { version: linkedByManager.version, data: linked }, 403);
+});
+
+async function formulaFixture(date = today()) {
+  const f = await hierarchyFixture(today());
+  const items = [];
+  for (const name of ['Maize ingredient', 'Soy ingredient']) items.push((await admin.send('post', '/inventory/items', { name, category: 'ingredient', unit: 'kg' }, 201)).body.data);
+  const manager = await assigned('farm_manager', 'formula-composer', [f.farmA.id]);
+  const operator = await assigned('operation_manager', 'formula-pricer', [f.farmA.id]);
+  const composition = { name: 'Layer ration', businessDate: date, bagSizeKg: '50', rows: [{ key: 'maize', itemId: items[0].id, kg: '60' }, { key: 'soy', itemId: items[1].id, kg: '40' }] };
+  const payload = { ...composition, farmId: f.farmA.id, code: 'LF-01' };
+  const author = date === today() ? manager : admin;
+  const formula = (await author.send('post', '/feed-formulas', payload, 201, randomUUID())).body.data;
+  return { ...f, items, manager, operator, composition, payload, formula, rates: [{ key: 'maize', rate: '10' }, { key: 'soy', rate: '20' }] };
+}
+const noFormulaPrices = (value) => {
+  for (const [key, child] of Object.entries(value || {})) {
+    assert.equal(['rate', 'rates', 'cost', 'costing', 'totalCost', 'costPerKg', 'costPerBag'].includes(key), false, 'Restricted pricing key: ' + key);
+    if (child && typeof child === 'object') noFormulaPrices(child);
+  }
+};
+test('formula composition-to-costing handoff calculates the worked example and redacts all restricted reads', async () => {
+  const f = await formulaFixture(); let row = f.formula;
+  const beforeStock = await StockMovement.countDocuments();
+  await f.manager.send('put', '/feed-formulas/' + row.id + '/pricing', { version: 1, rates: f.rates }, 403);
+  await f.manager.send('patch', '/feed-formulas/' + row.id, { ...f.composition, version: 1, rates: f.rates }, 422);
+  row = (await f.manager.send('post', '/feed-formulas/' + row.id + '/submit', { version: row.version })).body.data;
+  await f.manager.send('patch', '/feed-formulas/' + row.id, { ...f.composition, version: row.version }, 409);
+  const preview = (await f.operator.send('post', '/feed-formulas/' + row.id + '/preview', { version: row.version, rates: f.rates })).body.data;
+  assert.equal(preview.totalKg, '100.000'); assert.equal(preview.totalCost, '1400.00'); assert.equal(preview.costPerKg, '14.0000'); assert.equal(preview.costPerBag, '700.00');
+  assert.equal(await FormulaPricing.countDocuments(), 0);
+  row = (await f.operator.send('put', '/feed-formulas/' + row.id + '/pricing', { version: row.version, rates: f.rates })).body.data;
+  row = (await f.operator.send('post', '/feed-formulas/' + row.id + '/finalize', { version: row.version })).body.data;
+  assert.equal(row.status, 'finalized'); assert.equal(row.costing.totalCost, '1400.00');
+  noFormulaPrices((await f.manager.agent.get('/api/v1/feed-formulas/' + row.id).expect(200)).body);
+  noFormulaPrices((await f.manager.agent.get('/api/v1/feed-formulas').expect(200)).body);
+  await f.manager.send('post', '/feed-formulas/' + row.id + '/preview', { version: row.version, rates: f.rates }, 403);
+  assert.equal(await StockMovement.countDocuments(), beforeStock);
+  const snapshot = await FormulaSnapshot.findOne({ versionId: row.id }); assert.equal(snapshot.totalCost._bsontype, 'Decimal128');
+  snapshot.name = 'Overwritten'; await assert.rejects(snapshot.save(), /append-only/);
+  const frozen = await FormulaVersion.findById(row.id); frozen.name = 'Overwritten'; await assert.rejects(frozen.save(), /immutable/);
+});
+test('formula rates require exact row identity, positive precision and current optimistic version', async () => {
+  const f = await formulaFixture(); let row = (await f.manager.send('post', '/feed-formulas/' + f.formula.id + '/submit', { version: 1 })).body.data;
+  await f.operator.send('post', '/feed-formulas/' + row.id + '/finalize', { version: row.version }, 422);
+  for (const rates of [[f.rates[0]], [f.rates[0], f.rates[0]], [{ key: 'unknown', rate: '10' }, f.rates[1]], [{ ...f.rates[0], rate: '0' }, f.rates[1]], [{ ...f.rates[0], rate: '1.12345' }, f.rates[1]]]) await f.operator.send('put', '/feed-formulas/' + row.id + '/pricing', { version: row.version, rates }, 422);
+  row = (await f.operator.send('put', '/feed-formulas/' + row.id + '/pricing', { version: row.version, rates: f.rates })).body.data;
+  await f.operator.send('put', '/feed-formulas/' + row.id + '/pricing', { version: row.version - 1, rates: f.rates }, 409);
+  await f.operator.send('post', '/feed-formulas/' + row.id + '/finalize', { version: row.version, totalCost: '1' }, 422);
+  assert.equal(await FormulaSnapshot.countDocuments(), 0);
+});
+test('formula returns clear estimates, revisions preserve snapshots, and create/revise retries do not duplicate versions', async () => {
+  const f = await formulaFixture(); let row = f.formula;
+  const createKey = randomUUID();
+  const copy = { ...f.payload, code: 'LF-RETRY' };
+  const first = (await f.manager.send('post', '/feed-formulas', copy, 201, createKey)).body.data;
+  assert.equal((await f.manager.send('post', '/feed-formulas', copy, 201, createKey)).body.data.id, first.id);
+  await f.manager.send('post', '/feed-formulas', { ...copy, name: 'Changed request' }, 409, createKey);
+  row = (await f.manager.send('post', '/feed-formulas/' + row.id + '/submit', { version: 1 })).body.data;
+  row = (await f.operator.send('put', '/feed-formulas/' + row.id + '/pricing', { version: row.version, rates: f.rates })).body.data;
+  await f.operator.send('post', '/feed-formulas/' + row.id + '/return', { version: row.version, reason: '' }, 422);
+  row = (await f.operator.send('post', '/feed-formulas/' + row.id + '/return', { version: row.version, reason: 'Review quantities before pricing' })).body.data;
+  assert.equal(await FormulaPricing.countDocuments(), 0); noFormulaPrices(row);
+  row = (await f.manager.send('patch', '/feed-formulas/' + row.id, { ...f.composition, version: row.version })).body.data;
+  row = (await f.manager.send('post', '/feed-formulas/' + row.id + '/submit', { version: row.version })).body.data;
+  row = (await f.operator.send('put', '/feed-formulas/' + row.id + '/pricing', { version: row.version, rates: f.rates })).body.data;
+  row = (await f.operator.send('post', '/feed-formulas/' + row.id + '/finalize', { version: row.version })).body.data;
+  const snapshotBefore = JSON.stringify((await FormulaSnapshot.findOne({ versionId: row.id })).toObject());
+  const key = randomUUID(); const input = { version: row.version, businessDate: today(), reason: 'Plan a revised ration' };
+  const draft = (await f.manager.send('post', '/feed-formulas/' + row.id + '/revise', input, 200, key)).body.data;
+  assert.equal(draft.number, 2); assert.equal(draft.previousVersionId, row.id); noFormulaPrices(draft);
+  assert.equal((await f.manager.send('post', '/feed-formulas/' + row.id + '/revise', input, 200, key)).body.data.id, draft.id);
+  await f.manager.send('post', '/feed-formulas/' + row.id + '/revise', input, 409, randomUUID());
+  assert.equal(JSON.stringify((await FormulaSnapshot.findOne({ versionId: row.id })).toObject()), snapshotBefore);
+  assert.equal(await FormulaVersion.countDocuments({ formulaId: row.formulaId }), 2);
+  const previousCosting = (await f.operator.agent.get('/api/v1/feed-formulas/' + row.id).expect(200)).body.data.costing;
+  assert.equal(previousCosting.totalCost, '1400.00'); assert.equal(previousCosting.rows[0].cost, '600.00');
+});
+test('formula decimal rounding sums rounded rows and computes bags from the unrounded cost/kg ratio', async () => {
+  const f = await formulaFixture();
+  let row = (await f.manager.send('patch', '/feed-formulas/' + f.formula.id, { ...f.composition, bagSizeKg: '10000', rows: [{ ...f.composition.rows[0], kg: '3' }], version: 1 })).body.data;
+  row = (await f.manager.send('post', '/feed-formulas/' + row.id + '/submit', { version: row.version })).body.data;
+  const cost = (await f.operator.send('post', '/feed-formulas/' + row.id + '/preview', { version: row.version, rates: [{ key: 'maize', rate: '0.3333' }] })).body.data;
+  assert.equal(cost.totalCost, '1.00'); assert.equal(cost.costPerKg, '0.3333'); assert.equal(cost.costPerBag, '3333.33');
+  row = (await f.operator.send('post', '/feed-formulas/' + row.id + '/return', { version: row.version, reason: 'Verify rounded row totals' })).body.data;
+  row = (await f.manager.send('patch', '/feed-formulas/' + row.id, { ...f.composition, rows: f.composition.rows.map((r) => ({ ...r, kg: '1' })), version: row.version })).body.data;
+  row = (await f.manager.send('post', '/feed-formulas/' + row.id + '/submit', { version: row.version })).body.data;
+  const tiny = (await f.operator.send('post', '/feed-formulas/' + row.id + '/preview', { version: row.version, rates: f.rates.map((r) => ({ ...r, rate: '0.005' })) })).body.data;
+  assert.equal(tiny.totalCost, '0.02'); assert.ok(tiny.rows.every((r) => r.cost === '0.01'));
+});
+test('formula scope, date windows, pending exception and granular pricing grants remain enforced', async () => {
+  const f = await formulaFixture(daysAgo(3));
+  const other = await assigned('operation_manager', 'other-formula-pricer', [f.farmB.id]);
+  await other.agent.get('/api/v1/feed-formulas/' + f.formula.id).expect(404);
+  await f.operator.agent.get('/api/v1/feed-formulas/' + f.formula.id).expect(403);
+  let row = (await admin.send('post', '/feed-formulas/' + f.formula.id + '/submit', { version: 1 })).body.data;
+  assert.equal((await f.operator.agent.get('/api/v1/feed-formulas?view=pending').expect(200)).body.data.length, 1);
+  await f.operator.agent.get('/api/v1/feed-formulas?view=pending&from=' + daysAgo(3)).expect(422);
+  row = (await f.operator.send('put', '/feed-formulas/' + row.id + '/pricing', { version: row.version, rates: f.rates })).body.data;
+  const role = await Role.findOne({ code: 'operation_manager' });
+  const roleInput = { name: role.name, description: role.description, scopeMode: role.scopeMode, version: role.version, permissions: role.permissions.filter((p) => p !== 'feed-formulas.cost-view') };
+  await admin.send('patch', '/roles/' + role._id, roleInput);
+  noFormulaPrices((await f.operator.agent.get('/api/v1/feed-formulas/' + row.id).expect(200)).body);
+  await f.operator.send('post', '/feed-formulas/' + row.id + '/preview', { version: row.version, rates: f.rates }, 403);
+  await f.operator.send('post', '/feed-formulas/' + row.id + '/finalize', { version: row.version }, 403);
+  row = (await admin.send('post', '/feed-formulas/' + row.id + '/finalize', { version: row.version })).body.data;
+  await f.operator.agent.get('/api/v1/feed-formulas/' + row.id).expect(403);
+  const hiddenFarm = { ...f.payload, farmId: f.farmB.id, code: 'FORGED-FARM', businessDate: today() };
+  await f.manager.send('post', '/feed-formulas', hiddenFarm, 404, randomUUID());
+});
+test('formula validation and concurrent finalization protect catalog, stable rows and unique snapshot evidence', async () => {
+  const f = await formulaFixture();
+  const archiveDenied = await admin.send('patch', '/organization/farms/' + f.farmA.id + '/status', { version: f.farmA.version, archived: true }, 409);
+  assert.equal(archiveDenied.body.code, 'UNFINISHED_FORMULAS');
+  for (const extra of [{ rows: [{ ...f.composition.rows[0], kg: '1.0001' }] }, { rows: [f.composition.rows[0], f.composition.rows[0]] }, { rows: [{ ...f.composition.rows[0], itemId: reportStock.itemReference }] }, { rows: [{ ...f.composition.rows[0], kg: '-1' }] }, { status: 'finalized' }]) await f.manager.send('patch', '/feed-formulas/' + f.formula.id, { ...f.composition, version: 1, ...extra }, 422);
+  let row = (await f.manager.send('post', '/feed-formulas/' + f.formula.id + '/submit', { version: 1 })).body.data;
+  row = (await f.operator.send('put', '/feed-formulas/' + row.id + '/pricing', { version: row.version, rates: f.rates })).body.data;
+  const clients = await Promise.all([client(owner.email, changedPassword), client(owner.email, changedPassword)]);
+  const outcomes = await Promise.allSettled(clients.map((c) => c.send('post', '/feed-formulas/' + row.id + '/finalize', { version: row.version })));
+  assert.equal(outcomes.filter((r) => r.status === 'fulfilled').length, 1);
+  assert.equal(await FormulaSnapshot.countDocuments({ versionId: row.id }), 1);
+  const auditRows = await AuditEvent.find({ action: /^formula./ });
+  for (const event of auditRows) noFormulaPrices(event.changes);
+  const latest = (await admin.agent.get('/api/v1/feed-formulas/' + row.id).expect(200)).body.data;
+  const archived = (await f.manager.send('post', '/feed-formulas/' + row.id + '/archive', { version: latest.version, reason: 'Completed planning document' })).body.data;
+  assert.equal(archived.archived, true);
+  assert.equal((await f.manager.agent.get('/api/v1/feed-formulas?archived=true').expect(200)).body.data.length, 1);
 });

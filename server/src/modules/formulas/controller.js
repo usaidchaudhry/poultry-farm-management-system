@@ -1,0 +1,10 @@
+import * as service from './service.js';
+import { parse } from '../../lib/validation.js';
+import { query } from './validation.js';
+export const list = async (req, res) => res.json(await service.list(req.actor, parse(query, req.query)));
+export const ingredients = async (req, res) => res.json(await service.ingredients(req.actor, parse(query, req.query)));
+export const detail = async (req, res) => res.json({ data: await service.detail(req.actor, req.params.id) });
+export const create = async (req, res) => res.status(201).json({ data: await service.save(req.actor, null, req.input, req.get('Idempotency-Key'), req.id) });
+export const edit = async (req, res) => res.json({ data: await service.save(req.actor, req.params.id, req.input, null, req.id) });
+export const preview = async (req, res) => res.json({ data: await service.preview(req.actor, req.params.id, req.input) });
+export const action = (action) => async (req, res) => res.json({ data: await service.transition(req.actor, req.params.id, req.input, action, req.get('Idempotency-Key'), req.id) });

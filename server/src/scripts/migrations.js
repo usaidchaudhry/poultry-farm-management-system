@@ -5,9 +5,10 @@ import { DEFAULT_ROLES } from '../modules/access/catalog.js';
 import { reportModels, openingMovement } from '../modules/reports/models.js';
 import { clinicalModels } from '../modules/clinical/models.js';
 import { inventoryModels, defaultLocations } from '../modules/inventory/models.js';
+import { formulaModels } from '../modules/formulas/models.js';
 
 export async function applyMigrations(config) {
-  for (const model of [...models, ...Object.values(hierarchyModels), ...reportModels, ...clinicalModels, ...inventoryModels]) {
+  for (const model of [...models, ...Object.values(hierarchyModels), ...reportModels, ...clinicalModels, ...inventoryModels, ...formulaModels]) {
     try { await model.createCollection(); } catch (error) { if (error.code !== 48) throw error; }
     await model.createIndexes();
   }
@@ -35,5 +36,6 @@ export async function applyMigrations(config) {
     for (const farm of await hierarchyModels.farm.find().session(session)) await defaultLocations(farm, session);
     await Migration.create([{ _id: '005-location-inventory', appliedAt: new Date() }], { session });
   });
+  await Migration.updateOne({ _id: '006-formula-costing' }, { $setOnInsert: { appliedAt: new Date() } }, { upsert: true });
   return mongoose.connection;
 }

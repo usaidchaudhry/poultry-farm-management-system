@@ -3,6 +3,7 @@ import BirdMeasurementsPage from '../pages/work/BirdMeasurementsPage.jsx';
 import ClinicalVisitsPage from '../pages/work/ClinicalVisitsPage.jsx';
 import LiveMedicationPage from '../pages/work/LiveMedicationPage.jsx';
 import LiveInventoryPage from '../pages/work/LiveInventoryPage.jsx';
+import LiveFeedFormulasPage from '../pages/work/LiveFeedFormulasPage.jsx';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { ALL_PAGES } from '../config/modules.js';
 import AuthLayout from '../layouts/AuthLayout.jsx';
@@ -57,7 +58,7 @@ const PAGE_REGISTRY = {
   medication: config.isMock ? MedicationPage : LiveMedicationPage,
   'bird-parameters': () => config.isMock ? <WorkPage kind="measurements" permission={PERMISSIONS.BIRD_PARAMETERS_MANAGE} /> : <BirdMeasurementsPage />,
   inventory: config.isMock ? InventoryPage : LiveInventoryPage,
-  'feed-formulas': FeedFormulasPage,
+  'feed-formulas': config.isMock ? FeedFormulasPage : LiveFeedFormulasPage,
   'egg-production': () => <WorkPage kind="eggProduction" permission={PERMISSIONS.EGG_PRODUCTION_MANAGE} />,
   sales: SalesPage,
   finance: FinancePage,

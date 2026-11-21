@@ -1,6 +1,6 @@
 # LayerFlow
 
-A poultry-management Web Programming university course project using React, Express, Node.js, and MongoDB. **MERN Phases 0-6 are implemented:** backend foundation, real authentication, staff administration, editable role permissions, persistent farm hierarchy, scoped staff assignments, daily reports and revisions, mortality, population tracking, bird measurements, clinical prescriptions, independent medication administration, and per-location inventory with report-linked feed issues. Feed formulas, egg publication, sales, and other later modules remain integration-pending in API mode; the historical demo is available through explicit mock mode.
+A poultry-management Web Programming university course project using React, Express, Node.js, and MongoDB. **MERN Phases 0-7 are implemented:** backend foundation, real authentication, staff administration, editable role permissions, persistent farm hierarchy, scoped staff assignments, daily reports and revisions, mortality, population tracking, bird measurements, clinical prescriptions, independent medication administration, per-location inventory with report-linked feed issues, and versioned feed formula costing. Egg publication, sales, and other later modules remain integration-pending in API mode; the historical demo is available through explicit mock mode.
 
 - [Product requirements and phased plan](LayerFlow_MERN_PRD.md)
 - [Implementation log, decisions, data dictionary, API contract, and verification](docs/MERN_PHASE_0_2_IMPLEMENTATION.md)
@@ -8,6 +8,7 @@ A poultry-management Web Programming university course project using React, Expr
 - [Phase 4 reports, population, measurements, and publication contract](docs/MERN_PHASE_4_IMPLEMENTATION.md)
 - [Phase 5 clinical workflow, scheduling, evidence, and verification](docs/MERN_PHASE_5_IMPLEMENTATION.md)
 - [Phase 6 inventory, stock controls, report-feed posting, and verification](docs/MERN_PHASE_6_IMPLEMENTATION.md)
+- [Phase 7 formula composition, costing, privacy, and immutable versions](docs/MERN_PHASE_7_IMPLEMENTATION.md)
 - [Exact default role/permission matrix](docs/ACCESS_MATRIX.md)
 - [Progress checklist](PROGRESS.md)
 
@@ -120,6 +121,15 @@ Clinical history permissions remain separate from ordinary operational date acce
 5. Reverse manual errors using a linked compensating operation. Correct report-generated consumption by returning/editing/resubmitting the report. Farm Managers consume feed only through reports and cannot manually duplicate consumption.
 
 No stock quantities are seeded automatically. Record real opening stock before submitting positive feed consumption. Low-stock alerts are displayed here; durable notifications remain Phase 9.
+
+## Feed formulas and costing
+
+1. Create active ingredient catalog items in kg, then let the assigned Farm Manager compose a formula with code/name/date, ingredient quantities, and bag size (default 50 kg).
+2. Submit for costing. The Operation Manager uses **Pending costing queue**, enters all PKR/kg rates, previews authoritative totals, and saves rates before finalizing. A return requires a reason and clears estimates for fresh costing.
+3. Finalization preserves an immutable composition/price/rounding snapshot. The composer can create a linked new draft without copied prices or archive a completed formula.
+4. Farm Managers receive no price fields, including in old versions. Cost visibility, price entry, finalization, submission, and return have separate permissions. Formulas do not consume stock or book expenses.
+
+The worked 60 kg at PKR 10/kg plus 40 kg at PKR 20/kg example yields PKR 1,400 total and PKR 700 per 50 kg bag. See the Phase 7 log for decimal rounding, history policies, API contracts, and verification.
 
 ## Commands
 

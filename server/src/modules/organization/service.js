@@ -8,6 +8,7 @@ import { P } from '../access/catalog.js';
 import { DailyReport, BirdMovement, openingMovement } from '../reports/models.js';
 import { MedicationTask, Prescription } from '../clinical/models.js';
 import { defaultLocations, StockBalance } from '../inventory/models.js';
+import { FormulaVersion } from '../formulas/models.js';
 
 export const kinds = ['site', 'farm', 'house', 'flock'];
 const parentKind = (kind) => kinds[kinds.indexOf(kind) - 1];
@@ -68,6 +69,7 @@ export async function mutate(caller, kind, id, input, requestId, action) {
       assertVersion(record, input.version); before = publicEntity(record);
       if (action === 'status') {
         if (input.archived) {
+          if (['farm', 'site'].includes(kind) && await FormulaVersion.exists({ [`${kind}Id`]: record._id, status: { $ne: 'finalized' } }).session(session)) throw new AppError(409, 'UNFINISHED_FORMULAS', 'Finalize unfinished formula versions before archiving this hierarchy.');
           if (['farm', 'site'].includes(kind) && await StockBalance.exists({ [`${kind}Id`]: record._id, amount: { $ne: 0 } }).session(session)) throw new AppError(409, 'STOCK_REMAINS', 'Clear farm stock before archiving this hierarchy.');
           if (kind === 'flock' && (await MedicationTask.exists({ flockId: record._id, state: 'open' }).session(session) || await Prescription.exists({ flockId: record._id, status: 'draft' }).session(session))) throw new AppError(409, 'UNRESOLVED_CLINICAL_WORK', 'Resolve open medication tasks and draft prescriptions before archiving.');
           if (kind === 'flock' && await DailyReport.exists({ flockId: record._id, status: { $in: ['draft', 'returned'] } }).session(session)) throw new AppError(409, 'UNSUBMITTED_WORK', 'Submit unfinished reports before archiving this flock.');
