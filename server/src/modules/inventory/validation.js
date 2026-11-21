@@ -1,0 +1,12 @@
+import { z, id, version, displayName } from '../../lib/validation.js';
+import { calendarDate } from '../reports/validation.js';
+export const amount = z.number().finite().min(-1e9).max(1e9).refine((v) => Number(v.toFixed(3)) === v, 'Use at most three decimal places.');
+const reason = z.string().trim().min(3).max(1000);
+export const itemInput = z.object({ name: displayName, category: z.enum(['feed', 'ingredient', 'medicine', 'vaccine', 'supply', 'egg']), unit: z.enum(['kg', 'litre', 'count', 'ml', 'g']), active: z.boolean().default(true) }).strict();
+export const itemEdit = itemInput.extend({ version });
+export const locationInput = z.object({ farmId: id, name: displayName, kind: z.enum(['store', 'collection', 'other']).default('other') }).strict();
+export const locationEdit = z.object({ name: displayName, active: z.boolean(), version }).strict();
+export const posting = z.object({ type: z.enum(['opening', 'receipt', 'issue', 'adjustment', 'transfer']), itemId: id, locationId: id, destinationId: id.optional(), quantity: amount.refine((v) => v !== 0, 'Quantity cannot be zero.'), unit: z.enum(['kg', 'litre', 'count', 'ml', 'g']), businessDate: calendarDate, reason, purpose: z.enum(['loss', 'dispatch', 'other']).default('other') }).strict();
+export const reversal = z.object({ businessDate: calendarDate, reason }).strict();
+export const threshold = z.object({ itemId: id, locationId: id, minimum: amount.refine((v) => v >= 0), version }).strict();
+export const query = z.object({ farmId: id.optional(), itemId: id.optional(), locationId: id.optional(), category: itemInput.shape.category.optional(), active: z.enum(['true', 'false']).optional(), low: z.enum(['true', 'false']).optional(), from: calendarDate.optional(), to: calendarDate.optional(), page: z.coerce.number().int().min(1).max(10000).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20) }).strict();

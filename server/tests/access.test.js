@@ -19,11 +19,13 @@ import { clinicalModels, ClinicalVisit, Prescription, MedicationTask, Administra
 import { taskStatus } from '../src/modules/clinical/service.js';
 import { localInstant, occurrences } from '../src/modules/clinical/schedule.js';
 import { hierarchyModels as H } from '../src/modules/organization/models.js';
+import { randomUUID } from 'node:crypto';
+import { inventoryModels, InventoryItem, StockLocation, StockBalance, StockMovement, StockOperation, FeedPublication } from '../src/modules/inventory/models.js';
 
 const initialPassword = 'Temporary-test-password-123';
 const changedPassword = 'Changed-test-password-456';
 const origin = 'http://localhost:5173';
-let replica; let app; let config; let owner; let admin;
+let replica; let app; let config; let owner; let admin; let reportStock;
 
 async function client(email = 'owner@layerflow.test', password = initialPassword) {
   const agent = request.agent(app);
@@ -32,8 +34,11 @@ async function client(email = 'owner@layerflow.test', password = initialPassword
   csrf = login.body.data.csrfToken;
   return {
     agent, user: login.body.data.user,
-    async send(method, path, input, status = method === 'post' && ['/users', '/roles'].includes(path) ? 201 : 200) {
-      const response = await agent[method](`/api/v1${path}`).set('Origin', origin).set('X-CSRF-Token', csrf).send(input).expect(status);
+    async send(method, path, input, status = method === 'post' && ['/users', '/roles'].includes(path) ? 201 : 200, key) {
+      const request = agent[method](`/api/v1${path}`).set('Origin', origin).set('X-CSRF-Token', csrf);
+      if (key) request.set('Idempotency-Key', key);
+      const response = await request.send(input);
+      assert.equal(response.status, status, `${method.toUpperCase()} ${path}: ${JSON.stringify(response.body)}`);
       if (response.body.data?.csrfToken) csrf = response.body.data.csrfToken;
       return response;
     },
@@ -61,6 +66,8 @@ before(async () => {
 }, { timeout: 240000 });
 
 beforeEach(async () => {
+  reportStock = null;
+  for (const model of inventoryModels) await model.deleteMany({});
   for (const model of clinicalModels) await model.deleteMany({});
   for (const model of reportModels) await model.deleteMany({});
   for (const model of Object.values(H)) await model.deleteMany({});
@@ -264,6 +271,10 @@ async function hierarchyFixture(placementDate = '2026-11-01') {
   const houseA = await create('house', { name: 'House Alpha', farmId: farmA.id, capacity: 1000 });
   const houseB = await create('house', { name: 'House Beta', farmId: farmB.id });
   const flock = await create('flock', { name: 'Layer Alpha', houseId: houseA.id, initialCount: 500, placementDate, birdType: 'Layer' });
+  const item = (await admin.send('post', '/inventory/items', { name: 'Layer feed', category: 'feed', unit: 'kg' }, 201)).body.data;
+  const location = await StockLocation.findOne({ farmId: farmA.id, kind: 'store' });
+  reportStock = { itemReference: item.id, locationReference: String(location._id) };
+  await admin.send('post', '/inventory/movements', { type: 'opening', itemId: item.id, locationId: String(location._id), quantity: 10000, unit: 'kg', businessDate: placementDate, reason: 'Explicit report fixture opening stock' }, 201, randomUUID());
   return { create, site, farmA, farmB, houseA, houseB, flock };
 }
 
@@ -373,8 +384,152 @@ test('optional demo fixture creates two isolated managers and refuses to overwri
 
 const today = () => businessDate();
 const daysAgo = (n) => new Date(Date.parse(today()) - n * 86400000).toISOString().slice(0, 10);
-const completeReport = (mortality = 2) => ({ eggs: { jumbo: 10, starter: 20, standard: 100, small: 5, floor: 3, broken: 2, discard: 1 }, mortality, feed: { itemReference: 'Layer feed', locationReference: 'House store', bags: 1, bagSizeKg: 50, additionalKg: 2, notes: '' }, waterLitres: 100, lightHours: 16, eggSamples: [{ sampleType: 'single-egg', value: 0.06, unit: 'kg' }, { sampleType: 'single-egg', value: 64, unit: 'g' }, { sampleType: 'tray', value: 1800, unit: 'g' }], medicines: [{ name: 'Recorded medicine', quantity: 1, unit: 'ml', reference: 'Observation only' }], vaccines: [], comments: 'Daily observations', postMortem: 'No diagnosis inferred.' });
+const completeReport = (mortality = 2) => ({ eggs: { jumbo: 10, starter: 20, standard: 100, small: 5, floor: 3, broken: 2, discard: 1 }, mortality, feed: { ...reportStock, bags: 1, bagSizeKg: 50, additionalKg: 2, notes: '' }, waterLitres: 100, lightHours: 16, eggSamples: [{ sampleType: 'single-egg', value: 0.06, unit: 'kg' }, { sampleType: 'single-egg', value: 64, unit: 'g' }, { sampleType: 'tray', value: 1800, unit: 'g' }], medicines: [{ name: 'Recorded medicine', quantity: 1, unit: 'ml', reference: 'Observation only' }], vaccines: [], comments: 'Daily observations', postMortem: 'No diagnosis inferred.' });
 const createReport = async (f, date = today(), data = completeReport(), reason = '') => (await admin.send('post', '/daily-reports', { flockId: f.flock.id, businessDate: date, data, reason }, 201)).body.data;
+
+async function stockFixture() {
+  const f = await hierarchyFixture(today());
+  const item = (await admin.send('post', '/inventory/items', { name: 'Supply for ledger verification', category: 'supply', unit: 'kg' }, 201)).body.data;
+  const a = await StockLocation.findOne({ farmId: f.farmA.id, kind: 'store' });
+  const b = await StockLocation.findOne({ farmId: f.farmB.id, kind: 'store' });
+  const payload = (type, quantity, extra = {}) => ({ type, quantity, itemId: item.id, locationId: String(a._id), unit: 'kg', businessDate: today(), reason: 'Explicit verification posting', ...extra });
+  const post = async (type, quantity, extra = {}, status = 201, key = randomUUID(), actor = admin) => (await actor.send('post', '/inventory/movements', payload(type, quantity, extra), status, key)).body;
+  return { ...f, item, a, b, payload, post };
+}
+async function assigned(role, prefix, farmIds) {
+  const member = await staff(role, prefix);
+  await admin.send('put', `/users/${member.record._id}/scope`, { siteIds: [], farmIds, version: member.record.version });
+  return client(`${prefix}@layerflow.test`, changedPassword);
+}
+test('inventory receipt, issue, paired transfer, reversal, durable retries and reconciliation preserve quantities', async () => {
+  const f = await stockFixture();
+  const key = randomUUID();
+  const receipt = await f.post('receipt', 100, {}, 201, key);
+  assert.equal((await f.post('receipt', 100, {}, 201, key)).data[0].id, receipt.data[0].id);
+  await f.post('receipt', 101, {}, 409, key);
+  await f.post('issue', 20);
+  const transfer = await f.post('transfer', 30, { destinationId: String(f.b._id) });
+  assert.equal(transfer.data.reduce((sum, m) => sum + m.quantity, 0), 0);
+  assert.equal((await StockBalance.findOne({ itemId: f.item.id, locationId: f.a._id })).amount, 50000);
+  assert.equal((await StockBalance.findOne({ itemId: f.item.id, locationId: f.b._id })).amount, 30000);
+  const checks = (await admin.agent.get(`/api/v1/inventory/reconciliation?itemId=${f.item.id}`).expect(200)).body;
+  assert.ok(checks.data.every((r) => r.matches));
+  const reversed = await admin.send('post', `/inventory/movements/${transfer.data[0].id}/reverse`, { businessDate: today(), reason: 'Reverse complete paired transfer' }, 201, randomUUID());
+  assert.equal(reversed.body.data.length, 2);
+  assert.equal((await StockBalance.findOne({ itemId: f.item.id, locationId: f.a._id })).amount, 80000);
+  assert.equal((await StockBalance.findOne({ itemId: f.item.id, locationId: f.b._id })).amount, 0);
+  await admin.send('post', `/inventory/movements/${transfer.data[1].id}/reverse`, { businessDate: today(), reason: 'Repeated reversal forbidden' }, 409, randomUUID());
+  const movement = await StockMovement.findById(receipt.data[0].id); movement.reason = 'Overwrite'; await assert.rejects(movement.save(), /append-only/);
+});
+test('inventory rejects unsafe units, future postings, invalid openings and negative historical running stock', async () => {
+  const f = await stockFixture();
+  await admin.send('post', '/inventory/items', { name: 'Wrong feed unit', category: 'feed', unit: 'g' }, 422);
+  await f.post('receipt', 1, { unit: 'ml' }, 422);
+  await f.post('receipt', 0.00001, {}, 422);
+  await f.post('receipt', 1, { businessDate: daysAgo(-1) }, 422);
+  await f.post('opening', 100, { businessDate: daysAgo(2) });
+  await f.post('opening', 1, {}, 409);
+  await f.post('issue', 100, { businessDate: daysAgo(1) });
+  await f.post('receipt', 100);
+  // Present balance is sufficient, but an earlier issue would make yesterday negative.
+  await f.post('issue', 1, { businessDate: daysAgo(2) }, 409);
+  assert.equal((await StockBalance.findOne({ itemId: f.item.id, locationId: f.a._id })).amount, 100000);
+  const before = await StockMovement.countDocuments();
+  await f.post('transfer', 101, { destinationId: String(f.b._id) }, 409);
+  assert.equal(await StockMovement.countDocuments(), before);
+  await admin.send('patch', `/inventory/items/${f.item.id}`, { name: f.item.name, category: 'supply', unit: 'g', active: true, version: 1 }, 409);
+});
+test('concurrent inventory issues and identical retry keys commit once without overspending', async () => {
+  const f = await stockFixture(); await f.post('receipt', 100);
+  const clients = await Promise.all([client(owner.email, changedPassword), client(owner.email, changedPassword)]);
+  const outcomes = await Promise.allSettled(clients.map((c) => f.post('issue', 80, {}, 201, randomUUID(), c)));
+  assert.equal(outcomes.filter((r) => r.status === 'fulfilled').length, 1);
+  assert.equal((await StockBalance.findOne({ itemId: f.item.id, locationId: f.a._id })).amount, 20000);
+  const key = randomUUID();
+  const repeated = await Promise.all(clients.map((c) => f.post('receipt', 0.125, {}, 201, key, c)));
+  assert.equal(repeated[0].data[0].id, repeated[1].data[0].id);
+  assert.equal((await StockBalance.findOne({ itemId: f.item.id, locationId: f.a._id })).amount, 20125);
+});
+test('assigned inventory scope protects both transfer endpoints, current balances and restricted history', async () => {
+  const f = await stockFixture(); await f.post('receipt', 100, { businessDate: daysAgo(3) });
+  const user = await assigned('operation_manager', 'stock-manager', [f.farmA.id]);
+  const rows = (await user.agent.get('/api/v1/inventory/balances').expect(200)).body.data;
+  assert.ok(rows.every((r) => r.farmId === f.farmA.id));
+  assert.equal(rows.find((r) => r.itemId === f.item.id).quantity, 100);
+  assert.equal((await user.agent.get(`/api/v1/inventory/movements?itemId=${f.item.id}`).expect(200)).body.data.length, 0);
+  await user.agent.get(`/api/v1/inventory/movements?from=${daysAgo(3)}&to=${today()}`).expect(403);
+  await f.post('transfer', 20, { destinationId: String(f.b._id) }, 404, randomUUID(), user);
+  await f.post('receipt', 1, { locationId: String(f.b._id) }, 404, randomUUID(), user);
+  await user.agent.get(`/api/v1/inventory/balances?farmId=${f.farmB.id}`).expect(404);
+  const manager = await assigned('farm_manager', 'report-stock-manager', [f.farmA.id]);
+  await manager.agent.get('/api/v1/inventory/balances').expect(403);
+  const choices = (await manager.agent.get(`/api/v1/inventory/feed-options/${f.flock.id}`).expect(200)).body.data;
+  assert.ok(choices.locations.data.every((l) => l.farmId === f.farmA.id));
+  await f.post('receipt', 1, {}, 403, randomUUID(), manager);
+});
+test('daily report feed posts once, refunds or changes location on revisions, and blocks insufficient publication atomically', async () => {
+  const f = await hierarchyFixture(today());
+  const manager = await assigned('farm_manager', 'feed-report-manager', [f.farmA.id]);
+  let report = await createReport(f);
+  report = (await manager.send('post', `/daily-reports/${report.id}/submit`, { version: report.version })).body.data;
+  assert.equal((await StockBalance.findOne({ itemId: reportStock.itemReference, locationId: reportStock.locationReference })).amount, 9948000);
+  await manager.send('post', `/daily-reports/${report.id}/submit`, { version: 1 }, 409);
+  assert.equal(await StockMovement.countDocuments({ reportId: report.id }), 1);
+  const sourceMovement = await StockMovement.findOne({ reportId: report.id });
+  await admin.send('post', `/inventory/movements/${sourceMovement._id}/reverse`, { businessDate: today(), reason: 'Cannot manually undo report stock' }, 409, randomUUID());
+  const target = (await admin.send('post', '/inventory/locations', { farmId: f.farmA.id, name: 'House feed store', kind: 'store' }, 201)).body.data;
+  const change = async (data) => {
+    report = (await admin.send('post', `/daily-reports/${report.id}/return`, { version: report.version, reason: 'Correct feed evidence' })).body.data;
+    report = (await manager.send('patch', `/daily-reports/${report.id}`, { version: report.version, data })).body.data;
+  };
+  await change({ ...completeReport(), feed: { ...completeReport().feed, locationReference: target.id } });
+  await manager.send('post', `/daily-reports/${report.id}/submit`, { version: report.version, reason: 'Move consumption to correct store' }, 409);
+  assert.equal(await ReportRevision.countDocuments({ reportId: report.id }), 1);
+  assert.equal(await FeedPublication.countDocuments({ reportId: report.id }), 1);
+  assert.equal((await StockBalance.findOne({ itemId: reportStock.itemReference, locationId: reportStock.locationReference })).amount, 9948000);
+  await admin.send('post', '/inventory/movements', { type: 'receipt', itemId: reportStock.itemReference, locationId: target.id, quantity: 100, unit: 'kg', businessDate: today(), reason: 'Stock correct consumption location' }, 201, randomUUID());
+  report = (await manager.send('post', `/daily-reports/${report.id}/submit`, { version: report.version, reason: 'Correct store unchanged kilograms' })).body.data;
+  assert.equal((await StockBalance.findOne({ itemId: reportStock.itemReference, locationId: reportStock.locationReference })).amount, 10000000);
+  assert.equal((await StockBalance.findOne({ itemId: reportStock.itemReference, locationId: target.id })).amount, 48000);
+  await change({ ...completeReport(), feed: { ...completeReport().feed, locationReference: target.id, additionalKg: 40, bags: 0 } });
+  report = (await manager.send('post', `/daily-reports/${report.id}/submit`, { version: report.version, reason: 'Reduce actual consumption by twelve kg' })).body.data;
+  assert.equal((await StockBalance.findOne({ itemId: reportStock.itemReference, locationId: target.id })).amount, 60000);
+  await change({ ...completeReport(), feed: { ...completeReport().feed, locationReference: target.id, additionalKg: 60, bags: 0 } });
+  report = (await manager.send('post', `/daily-reports/${report.id}/submit`, { version: report.version, reason: 'Increase actual consumption by twenty kg' })).body.data;
+  assert.equal((await StockBalance.findOne({ itemId: reportStock.itemReference, locationId: target.id })).amount, 40000);
+  await change({ ...completeReport(), feed: { ...completeReport().feed, locationReference: target.id, additionalKg: 0, bags: 0 } });
+  report = (await manager.send('post', `/daily-reports/${report.id}/submit`, { version: report.version, reason: 'Zero actual recorded consumption' })).body.data;
+  assert.equal((await StockBalance.findOne({ itemId: reportStock.itemReference, locationId: target.id })).amount, 100000);
+  assert.equal(await FeedPublication.countDocuments({ reportId: report.id }), 5);
+  assert.equal(report.publishedSummary.stockPosting, 'feed-posted-eggs-deferred-phase-8');
+});
+test('report feed validates real catalog, farm and consumption path; legacy reports are not silently backfilled', async () => {
+  const f = await hierarchyFixture(today());
+  const data = completeReport(); data.feed.itemReference = 'Historical descriptive feed';
+  let report = await createReport(f, today(), data);
+  await admin.send('post', `/daily-reports/${report.id}/submit`, { version: report.version }, 422);
+  data.feed = { ...completeReport().feed, locationReference: String((await StockLocation.findOne({ farmId: f.farmB.id, kind: 'store' }))._id) };
+  report = (await admin.send('patch', `/daily-reports/${report.id}`, { version: report.version, data })).body.data;
+  await admin.send('post', `/daily-reports/${report.id}/submit`, { version: report.version }, 422);
+  await admin.send('post', '/inventory/movements', { type: 'issue', itemId: reportStock.itemReference, locationId: reportStock.locationReference, quantity: 52, unit: 'kg', businessDate: today(), reason: 'Duplicate manual feed consumption' }, 422, randomUUID());
+  assert.equal(await FeedPublication.countDocuments(), 0);
+});
+test('low thresholds, stale edits, zero balances, archive guards and cache discrepancies are visible', async () => {
+  const f = await stockFixture();
+  await admin.send('put', '/inventory/thresholds', { itemId: f.item.id, locationId: String(f.a._id), minimum: 10, version: 1 });
+  const low = (await admin.agent.get(`/api/v1/inventory/balances?low=true&itemId=${f.item.id}`).expect(200)).body.data;
+  assert.equal(low.length, 1); assert.equal(low[0].quantity, 0);
+  await admin.send('put', '/inventory/thresholds', { itemId: f.item.id, locationId: String(f.a._id), minimum: 10, version: 1 }, 409);
+  await f.post('receipt', 10);
+  await admin.send('patch', `/inventory/locations/${f.a._id}`, { name: f.a.name, active: false, version: f.a.version }, 409);
+  await StockBalance.updateOne({ itemId: f.item.id, locationId: f.a._id }, { $inc: { amount: 1 } });
+  await f.post('receipt', 1, {}, 409);
+  const check = (await admin.agent.get(`/api/v1/inventory/reconciliation?itemId=${f.item.id}`).expect(200)).body.data[0];
+  assert.equal(check.matches, false);
+  await StockBalance.deleteOne({ itemId: f.item.id, locationId: f.a._id });
+  const missing = (await admin.agent.get(`/api/v1/inventory/reconciliation?itemId=${f.item.id}`).expect(200)).body.data[0];
+  assert.equal(missing.cacheMissing, true); assert.equal(missing.matches, false); assert.equal(missing.ledgerQuantity, 10);
+});
 
 test('report lifecycle preserves revisions and publishes only delta effects with server-derived totals', async () => {
   const f = await hierarchyFixture(today());

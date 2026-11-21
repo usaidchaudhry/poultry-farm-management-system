@@ -1,4 +1,5 @@
 import { assertReportLinks } from '../clinical/report-links.js';
+import { publishFeed } from '../inventory/service.js';
 import { randomUUID } from 'node:crypto';
 import { DailyReport as R, ReportRevision as V, BirdMovement as B, BirdMeasurement as W, PublicationIntent as I, flockScope } from './models.js';
 import { eggKeys } from './validation.js';
@@ -151,6 +152,9 @@ export async function transition(caller, id, input, action, requestId) {
       const prior = report.publishedRevision ? await V.findOne({ reportId: id, number: report.publishedRevision }).session(session) : null;
       const number = report.publishedRevision + 1;
       const sourceKey = `report:${id}:revision:${number}`;
+      const feedPublication = await publishFeed(actor, report, summary.feedKg, number, input.reason, session);
+      summary.stockPosting = 'feed-posted-eggs-deferred-phase-8';
+      summary.feedPublication = feedPublication;
       await V.create([{ ...flockScope(flock), reportId: id, businessDate: report.businessDate, number, data: report.data, summary, reason: input.reason, submittedBy: actor.id, submittedByName: actor.name, submittedAt: new Date() }], { session });
       const mortalityDelta = report.data.mortality - (prior?.data.mortality || 0);
       if (mortalityDelta) await B.create([{ ...flockScope(flock), reportId: id, revision: number, businessDate: report.businessDate, type: 'mortality', count: -mortalityDelta, reason: input.reason || 'Daily report submission', sourceKey: `${sourceKey}:mortality`, createdBy: actor.id }], { session });

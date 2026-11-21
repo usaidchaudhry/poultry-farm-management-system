@@ -1,0 +1,11 @@
+import * as service from './service.js';
+import { parse } from '../../lib/validation.js';
+import { query } from './validation.js';
+export const list = (kind) => async (req, res) => res.json(await service.list(req.actor, kind, parse(query, req.query)));
+export const saveItem = async (req, res) => res.status(req.params.id ? 200 : 201).json({ data: await service.saveItem(req.actor, req.params.id, req.input, req.id) });
+export const saveLocation = async (req, res) => res.status(req.params.id ? 200 : 201).json({ data: await service.saveLocation(req.actor, req.params.id, req.input, req.id) });
+export const post = async (req, res) => res.status(201).json({ data: await service.post(req.actor, req.input, req.get('Idempotency-Key'), req.id) });
+export const reverse = async (req, res) => res.status(201).json({ data: await service.reverse(req.actor, req.params.id, req.input, req.get('Idempotency-Key'), req.id) });
+export const threshold = async (req, res) => res.json({ data: await service.setThreshold(req.actor, req.input, req.id) });
+export const reconcile = async (req, res) => res.json(await service.reconcile(req.actor, parse(query, req.query)));
+export const feedOptions = async (req, res) => res.json({ data: await service.feedOptions(req.actor, req.params.id, parse(query, req.query)) });

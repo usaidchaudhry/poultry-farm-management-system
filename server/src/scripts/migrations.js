@@ -4,9 +4,10 @@ import { hierarchyModels } from '../modules/organization/models.js';
 import { DEFAULT_ROLES } from '../modules/access/catalog.js';
 import { reportModels, openingMovement } from '../modules/reports/models.js';
 import { clinicalModels } from '../modules/clinical/models.js';
+import { inventoryModels, defaultLocations } from '../modules/inventory/models.js';
 
 export async function applyMigrations(config) {
-  for (const model of [...models, ...Object.values(hierarchyModels), ...reportModels, ...clinicalModels]) {
+  for (const model of [...models, ...Object.values(hierarchyModels), ...reportModels, ...clinicalModels, ...inventoryModels]) {
     try { await model.createCollection(); } catch (error) { if (error.code !== 48) throw error; }
     await model.createIndexes();
   }
@@ -28,5 +29,11 @@ export async function applyMigrations(config) {
     await Migration.create([{ _id: '003-reports-and-population', appliedAt: new Date() }], { session });
   });
   await Migration.updateOne({ _id: '004-clinical-administration' }, { $setOnInsert: { appliedAt: new Date() } }, { upsert: true });
+  await transaction(async (session) => {
+    await SecurityGuard.updateOne({ _id: 'access-control' }, { $inc: { revision: 1 } }, { session });
+    if (await Migration.exists({ _id: '005-location-inventory' }).session(session)) return;
+    for (const farm of await hierarchyModels.farm.find().session(session)) await defaultLocations(farm, session);
+    await Migration.create([{ _id: '005-location-inventory', appliedAt: new Date() }], { session });
+  });
   return mongoose.connection;
 }

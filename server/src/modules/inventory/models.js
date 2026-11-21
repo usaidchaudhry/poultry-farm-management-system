@@ -1,0 +1,31 @@
+import mongoose from 'mongoose';
+const { Schema, model } = mongoose;
+const options = { timestamps: true, strict: 'throw', versionKey: false };
+const ref = (name, required = true) => ({ type: Schema.Types.ObjectId, ref: name, required });
+const scope = { organizationId: ref('Organization'), siteId: ref('Site'), farmId: ref('Farm') };
+const item = new Schema({ organizationId: ref('Organization'), name: String, nameKey: String, category: { type: String, enum: ['feed', 'ingredient', 'medicine', 'vaccine', 'supply', 'egg'] }, unit: { type: String, enum: ['kg', 'litre', 'count', 'ml', 'g'] }, active: { type: Boolean, default: true }, version: { type: Number, default: 1 } }, options);
+item.index({ organizationId: 1, nameKey: 1 }, { unique: true });
+const location = new Schema({ ...scope, name: String, nameKey: String, kind: { type: String, enum: ['store', 'collection', 'other'], default: 'other' }, active: { type: Boolean, default: true }, version: { type: Number, default: 1 } }, options);
+location.index({ farmId: 1, nameKey: 1 }, { unique: true });
+const balance = new Schema({ ...scope, itemId: ref('InventoryItem'), locationId: ref('StockLocation'), amount: { type: Number, default: 0, min: 0 }, minimum: { type: Number, default: 0 }, version: { type: Number, default: 1 } }, options);
+balance.index({ itemId: 1, locationId: 1 }, { unique: true });
+const movement = new Schema({ ...scope, itemId: ref('InventoryItem'), locationId: ref('StockLocation'), businessDate: String, type: String, amount: Number, unit: String, itemName: String, locationName: String, reason: String, purpose: String, sourceKey: { type: String, required: true, unique: true }, operationId: ref('StockOperation', false), source: { type: String, enum: ['manual', 'report'] }, reportId: ref('DailyReport', false), revision: Number, reversesId: ref('StockMovement', false), createdBy: ref('User'), createdByName: String }, options);
+movement.index({ organizationId: 1, farmId: 1, businessDate: -1 });
+movement.index({ itemId: 1, locationId: 1, businessDate: 1, _id: 1 });
+const operation = new Schema({ organizationId: ref('Organization'), actorId: ref('User'), requestKey: String, fingerprint: String, movementIds: [{ type: Schema.Types.ObjectId }], reversedBy: ref('StockOperation', false), reversesOperationId: ref('StockOperation', false) }, options);
+operation.index({ actorId: 1, requestKey: 1 }, { unique: true });
+operation.index({ reversesOperationId: 1 }, { unique: true, partialFilterExpression: { reversesOperationId: { $type: 'objectId' } } });
+const publication = new Schema({ ...scope, reportId: ref('DailyReport'), revision: Number, feedKg: Number, itemId: ref('InventoryItem', false), locationId: ref('StockLocation', false), movementIds: [{ type: Schema.Types.ObjectId }] }, options);
+publication.index({ reportId: 1, revision: 1 }, { unique: true });
+for (const schema of [movement, publication]) schema.pre('save', function () { if (!this.isNew) throw new Error('Stock evidence is append-only.'); });
+export const InventoryItem = model('InventoryItem', item);
+export const StockLocation = model('StockLocation', location);
+export const StockBalance = model('StockBalance', balance);
+export const StockMovement = model('StockMovement', movement);
+export const StockOperation = model('StockOperation', operation);
+export const FeedPublication = model('FeedPublication', publication);
+export const inventoryModels = [InventoryItem, StockLocation, StockBalance, StockMovement, StockOperation, FeedPublication];
+export const farmScope = (farm) => ({ organizationId: farm.organizationId, siteId: farm.siteId, farmId: farm._id });
+export async function defaultLocations(farm, session) {
+  for (const [name, kind] of [['Main store', 'store'], ['Egg collection room', 'collection']]) await StockLocation.updateOne({ farmId: farm._id, nameKey: name.toLowerCase() }, { $setOnInsert: { ...farmScope(farm), name, kind, active: true, version: 1 } }, { upsert: true, session });
+}

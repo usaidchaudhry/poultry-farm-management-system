@@ -155,6 +155,19 @@ Publication boundary: every submitted report revision records one deferred egg/f
 - [x] Live asynchronous Clinical/Medication pages, multi-item forms, schedule preview, open/history filtering, evidence details, phone-width workflow, and optional daily-report clinical links.
 - [x] Actual database, concurrency, DST, restart-persistence and browser Doctor-to-Farm-Manager checks; implementation log, README, and repository guidance updated.
 - [x] Final Phase 5 verification: 44 backend checks, 9 mock checks, clean-browser workflow, production build, 56 server syntax checks, documentation links, and whitespace checks passed; clinical and mobile administration screenshots reviewed.
-- [ ] MERN Phase 6: location-based inventory, balances, immutable movements, and daily-report feed publication.
+- [x] MERN Phase 6: location-based inventory, balances, immutable movements, and daily-report feed publication. See `docs/MERN_PHASE_6_IMPLEMENTATION.md`.
 
 Phase 5 boundaries: image uploads remain Phase 9. Medication administration does not automatically issue stock; the Phase 4 egg/feed publication intents still await the Phases 6/8 ledgers. Daily-report clinical references link existing evidence without creating another administration.
+
+### MERN Phase 6 completion (22 November 2026)
+
+- [x] Catalog, farm locations/default stores, cached balances, append-only movements, durable posting operations and report-feed publication schemas; repeatable migration without fabricated stock.
+- [x] Opening, receipt, issue, signed adjustment, paired transfer, linked compensating reversal, canonical-unit/precision validation, thresholds and low/out-of-stock views.
+- [x] Serialized access transaction, conditional balances, current and historical nonnegative stock, durable retry deduplication, scoped endpoints/history and server audit.
+- [x] Report-linked feed issue/delta/refund/item-location corrections; atomic insufficient-stock rollback, Farm Manager report-only writes and source-only reversals.
+- [x] Live asynchronous inventory filters/forms/pagination/reconciliation and scoped report stock selectors; preserved explicit mock demo and immutable legacy snapshots.
+- [x] Actual MongoDB/API concurrency and rollback checks, restart persistence, clean-browser receipt/issue/transfer/report workflow and phone-width balance review.
+- [x] Phase 6 verification: 51 backend checks, 9 mock checks, clean-browser workflow, production build, 61 server syntax checks, documentation links and whitespace checks passed.
+- [ ] MERN Phase 7: feed composition, versioned costing, and permission-separated handoff.
+
+Phase 6 supersedes the historical feed deferral above. Egg intents remain deferred until Phase 8. Existing descriptive feed reports are not automatically charged; selecting real stock and submitting their first stock-enabled revision issues the full selected quantity. No medication-to-stock conversion or durable low-stock notification delivery was added.

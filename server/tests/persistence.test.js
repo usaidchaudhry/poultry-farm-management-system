@@ -15,6 +15,7 @@ import { User, Role } from '../src/modules/access/models.js';
 import { businessDate } from '../src/policies/dates.js';
 import { BirdMovement, PublicationIntent } from '../src/modules/reports/models.js';
 import { MedicationTask, AdministrationEvent } from '../src/modules/clinical/models.js';
+import { StockLocation, StockBalance, StockMovement, FeedPublication } from '../src/modules/inventory/models.js';
 
 test('database hierarchy, reports, clinical tasks/outcomes, assignments and authenticated session survive a full MongoDB restart', { timeout: 120000 }, async () => {
   const root = resolve('../.data/verification');
@@ -38,10 +39,14 @@ test('database hierarchy, reports, clinical tasks/outcomes, assignments and auth
     await User.updateOne({ _id: owner.id }, { $set: { farmIds: [farm.id] } });
     const write = (path, input) => agent.post(`/api/v1${path}`).set('X-CSRF-Token', changed.body.data.csrfToken).send(input);
     const house = (await write('/organization/houses', { name: 'Persistent House', farmId: farm.id }).expect(201)).body.data;
+    const item = (await write('/inventory/items', { name: 'Persistent feed', category: 'feed', unit: 'kg' }).expect(201)).body.data;
+    const store = await StockLocation.findOne({ farmId: farm.id, kind: 'store' });
+    await agent.post('/api/v1/inventory/movements').set('X-CSRF-Token', changed.body.data.csrfToken).set('Idempotency-Key', randomBytes(20).toString('hex')).send({ type: 'receipt', itemId: item.id, locationId: String(store._id), quantity: 100, unit: 'kg', businessDate: businessDate(), reason: 'Persistent opening receipt' }).expect(201);
     const flock = (await write('/organization/flocks', { name: 'Persistent Flock', houseId: house.id, placementDate: businessDate(), initialCount: 100 }).expect(201)).body.data;
     const measurement = (await write('/bird-measurements', { flockId: flock.id, measuredAt: new Date().toISOString(), sampleSize: 10, averageWeight: 1.6, unit: 'kg' }).expect(201)).body.data;
     const report = (await write('/daily-reports', { flockId: flock.id, businessDate: businessDate(), data: { eggs: { jumbo: 0, starter: 0, standard: 80, small: 0, floor: 0, broken: 0, discard: 0 }, mortality: 1, feed: { bags: 0, bagSizeKg: 0, additionalKg: 0 }, waterLitres: 0, lightHours: 0, measurementId: measurement.id } }).expect(201)).body.data;
     await write(`/daily-reports/${report.id}/submit`, { version: report.version }).expect(200);
+    assert.equal(await FeedPublication.countDocuments({ reportId: report.id }), 1);
     const visit = (await write('/clinical-visits', { flockId: flock.id, occurredAt: new Date().toISOString(), diagnosis: 'Persistent recorded clinical assessment' }).expect(201)).body.data;
     const prescription = (await write(`/clinical-visits/${visit.id}/prescriptions`, { items: [{ key: 'persistent-item', medicine: 'Recorded demonstration item', instructions: 'Follow recorded instructions', route: 'water', startDate: businessDate(), durationDays: 3, times: ['00:00'] }] }).expect(201)).body.data;
     await write(`/prescriptions/${prescription.id}/finalize`, { version: 1 }).expect(200);
@@ -86,6 +91,9 @@ test('database hierarchy, reports, clinical tasks/outcomes, assignments and auth
     assert.equal(taskRestored.state, 'missed');
     assert.equal(taskRestored.events[0].recordedBy, staff.id);
     assert.equal(await AdministrationEvent.countDocuments(), 1);
+    assert.equal((await StockBalance.findOne({ itemId: item.id, locationId: store._id })).amount, 100000);
+    assert.equal(await StockMovement.countDocuments({ itemId: item.id }), 1);
+    assert.equal(await FeedPublication.countDocuments({ reportId: report.id }), 1);
   } finally {
     await mongoose.disconnect();
     if (replica) await replica.stop({ doCleanup: false });

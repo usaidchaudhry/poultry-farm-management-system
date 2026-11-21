@@ -1,0 +1,16 @@
+import { Router } from 'express';
+import { permission, anyPermission } from '../../middleware/auth.js';
+import { body, validId } from '../../lib/validation.js';
+import { itemInput, itemEdit, locationInput, locationEdit, posting, reversal, threshold } from './validation.js';
+import * as controller from './controller.js';
+export const inventoryRouter = Router();
+for (const kind of ['items', 'locations', 'balances', 'movements']) inventoryRouter.get(`/${kind}`, permission('inventory.view'), controller.list(kind));
+inventoryRouter.get('/reconciliation', permission('inventory.view'), controller.reconcile);
+inventoryRouter.get('/feed-options/:id', anyPermission('daily-reports.manage', 'daily-reports.submit'), validId, controller.feedOptions);
+inventoryRouter.post('/items', permission('inventory.manage'), body(itemInput), controller.saveItem);
+inventoryRouter.patch('/items/:id', permission('inventory.manage'), validId, body(itemEdit), controller.saveItem);
+inventoryRouter.post('/locations', permission('inventory.manage'), body(locationInput), controller.saveLocation);
+inventoryRouter.patch('/locations/:id', permission('inventory.manage'), validId, body(locationEdit), controller.saveLocation);
+inventoryRouter.put('/thresholds', permission('inventory.manage'), body(threshold), controller.threshold);
+inventoryRouter.post('/movements', anyPermission('inventory.manage', 'inventory.adjust', 'inventory.transfer'), body(posting), controller.post);
+inventoryRouter.post('/movements/:id/reverse', permission('inventory.adjust'), validId, body(reversal), controller.reverse);

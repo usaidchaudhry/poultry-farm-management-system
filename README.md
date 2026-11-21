@@ -1,12 +1,13 @@
 # LayerFlow
 
-A poultry-management Web Programming university course project using React, Express, Node.js, and MongoDB. **MERN Phases 0-5 are implemented:** backend foundation, real authentication, staff administration, editable role permissions, persistent farm hierarchy, scoped staff assignments, daily reports and revisions, mortality, population tracking, bird measurements, clinical prescriptions, and independent medication administration. Inventory, feed formulas, sales, and other later modules remain integration-pending in API mode; the historical demo is available through explicit mock mode.
+A poultry-management Web Programming university course project using React, Express, Node.js, and MongoDB. **MERN Phases 0-6 are implemented:** backend foundation, real authentication, staff administration, editable role permissions, persistent farm hierarchy, scoped staff assignments, daily reports and revisions, mortality, population tracking, bird measurements, clinical prescriptions, independent medication administration, and per-location inventory with report-linked feed issues. Feed formulas, egg publication, sales, and other later modules remain integration-pending in API mode; the historical demo is available through explicit mock mode.
 
 - [Product requirements and phased plan](LayerFlow_MERN_PRD.md)
 - [Implementation log, decisions, data dictionary, API contract, and verification](docs/MERN_PHASE_0_2_IMPLEMENTATION.md)
 - [Phase 3 implementation, API contract, demo data, and verification](docs/MERN_PHASE_3_IMPLEMENTATION.md)
 - [Phase 4 reports, population, measurements, and publication contract](docs/MERN_PHASE_4_IMPLEMENTATION.md)
 - [Phase 5 clinical workflow, scheduling, evidence, and verification](docs/MERN_PHASE_5_IMPLEMENTATION.md)
+- [Phase 6 inventory, stock controls, report-feed posting, and verification](docs/MERN_PHASE_6_IMPLEMENTATION.md)
 - [Exact default role/permission matrix](docs/ACCESS_MATRIX.md)
 - [Progress checklist](PROGRESS.md)
 
@@ -98,7 +99,7 @@ Open **Organization** to create Sites > Farms > Houses > Flocks. One active floc
 
 Staff reads are limited to today/yesterday unless their role grants history. Older report writes additionally need correction permission and a reason. Farm scope is checked on lists, details, revisions, and writes.
 
-**Phase 4 is an interim publication gate:** report submission records source-keyed egg/feed posting intents. Actual stock balances and negative-stock correction checks arrive with Phases 6/8; submission currently does not deduct feed or create saleable egg stock. See the Phase 4 implementation log for the exact contract.
+**Phase 6 publication:** submitting a positive feed quantity requires real item/location selections and deducts stock atomically. Returned drafts retain their last effective consumption; revisions post differences or refund/reissue changed sources. Insufficient current or historical stock blocks submission. Egg stock publication remains Phase 8. Legacy descriptive reports are preserved; their first stock-enabled revision posts its full selected consumption. See the Phase 6 log for the cutover contract.
 
 ## Clinical visits and medication
 
@@ -109,6 +110,16 @@ Staff reads are limited to today/yesterday unless their role grants history. Old
 5. Daily reports can optionally link existing visits, prescription versions, and administration events. These references never confirm another administration or issue inventory.
 
 Clinical history permissions remain separate from ordinary operational date access. Open tasks remain actionable when overdue across older dates. Images are a later-phase dependency. See the Phase 5 log for action/date policies, UTC scheduling, correction rules, and the source API contracts.
+
+## Inventory and feed stock
+
+1. Open **Inventory and feed**. Each farm has a Main store and Egg collection room; authorized staff can add locations and catalog items.
+2. Post opening stock or receipts in the declared base unit. Feed/ingredients use kg; eggs use whole counts. Every posting requires a business date and reason.
+3. Post a signed adjustment, manual loss/dispatch, or paired transfer between permitted locations. Current balances include all history. Movement history follows your date permission.
+4. Configure a low-stock threshold per item/location, including zero pairs before their first receipt. Inspect low stock and reconciliation; discrepancies block further posting for that pair.
+5. Reverse manual errors using a linked compensating operation. Correct report-generated consumption by returning/editing/resubmitting the report. Farm Managers consume feed only through reports and cannot manually duplicate consumption.
+
+No stock quantities are seeded automatically. Record real opening stock before submitting positive feed consumption. Low-stock alerts are displayed here; durable notifications remain Phase 9.
 
 ## Commands
 
@@ -126,7 +137,7 @@ Clinical history permissions remain separate from ordinary operational date acce
 | `npm run preview` | Preview frontend bundle; a real API must be served/proxied separately |
 | `npm test` | Existing browser-mock workflow checks |
 | `npm run test:server` | Actual temporary MongoDB/API/security integration checks |
-| `npm run test:browser` | Headless Edge identity/admin/hierarchy/report/clinical workflow with temporary API/frontend/database |
+| `npm run test:browser` | Headless Edge identity/admin/hierarchy/report/clinical/inventory workflow with temporary API/frontend/database |
 | `npm run docs:access` | Regenerate the default access matrix from the seed catalog |
 
 Verification commands never reset your configured application database. They create independent temporary test databases. Browser screenshots are saved under ignored `.data/verification/`.

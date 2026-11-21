@@ -419,6 +419,56 @@ try {
   await page.goto(`${origin}/users`);
   console.log('PASS: Doctor schedule preview/finalization, prescriber restriction, independent administration, immutable correction and future replacement.');
 
+  await page.goto(`${origin}/inventory`);
+  await page.getByRole('button', { name: 'New inventory item', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Name', { exact: true }).fill('Browser layer feed');
+  await dialog.getByRole('button', { name: 'Save stock changes', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  const stockPost = async (type, quantity, source, destination) => {
+    await page.getByRole('button', { name: 'Post stock movement', exact: true }).click();
+    const form = page.getByRole('dialog');
+    await form.getByLabel('Movement type', { exact: true }).selectOption(type);
+    await form.getByLabel('Stock item', { exact: true }).selectOption({ label: 'Browser layer feed (kg)' });
+    await form.getByLabel('Source location', { exact: true }).selectOption({ label: source });
+    if (destination) await form.getByLabel('Destination location', { exact: true }).selectOption({ label: destination });
+    await form.getByLabel('Quantity in base unit', { exact: true }).fill(String(quantity));
+    if (type === 'issue') await form.getByLabel('Issue purpose', { exact: true }).selectOption('loss');
+    await form.getByLabel('Stock reason', { exact: true }).fill('Explicit browser verification stock event');
+    await form.getByRole('button', { name: 'Save stock changes', exact: true }).click();
+    await form.waitFor({ state: 'hidden' });
+  };
+  await stockPost('receipt', 100, 'Browser Farm Alpha / Main store');
+  await stockPost('issue', 20, 'Browser Farm Alpha / Main store');
+  await stockPost('transfer', 30, 'Browser Farm Alpha / Main store', 'Browser Farm Beta / Main store');
+  await page.getByRole('button', { name: 'Reconciliation', exact: true }).click();
+  await page.getByRole('cell', { name: '50', exact: true }).first().waitFor();
+  await page.screenshot({ path: resolve(evidence, 'inventory-reconciliation-desktop.png'), fullPage: true, animations: 'disabled' });
+  await page.goto(`${origin}/daily-reports`);
+  await page.getByRole('button', { name: `View report ${businessDate()}`, exact: true }).click();
+  await page.getByLabel('Submission or return reason', { exact: true }).fill('Record feed consumption against live stock');
+  await page.getByRole('button', { name: 'Return for correction', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit draft', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Feed item reference', { exact: true }).selectOption({ label: 'Browser layer feed' });
+  await dialog.getByLabel('Feed location reference', { exact: true }).selectOption({ label: 'Main store' });
+  await dialog.getByLabel('Additional feed (kg)', { exact: true }).fill('10');
+  await dialog.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: `View report ${businessDate()}`, exact: true }).click();
+  await page.getByLabel('Submission or return reason', { exact: true }).fill('Confirm ten kg consumption');
+  await page.getByRole('button', { name: 'Submit report', exact: true }).click();
+  await page.getByRole('button', { name: 'Revision 4', exact: true }).waitFor();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await page.goto(`${origin}/inventory`);
+  await page.getByRole('cell', { name: '40', exact: true }).waitFor();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: resolve(evidence, 'inventory-balances-mobile.png'), fullPage: true, animations: 'disabled' });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${origin}/users`);
+  console.log('PASS: live inventory catalog, receipt/issue/transfer, reconciliation, report feed deduction and phone-width balances.');
+
 
 
   await page.getByRole('button', { name: 'Assign sites and farms to Browser Staff', exact: true }).click();

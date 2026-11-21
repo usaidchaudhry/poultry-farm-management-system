@@ -28,7 +28,7 @@ export default function ReportDetails({ record, onClose, onEdit, onChanged }) {
     {error && <Alert tone="error">{error}</Alert>}
     <p>Status: <strong>{record.status}</strong> · Version {record.version} · Published revision {record.publishedRevision || 'None'}</p>
     <p>Recorded by {record.createdByName || record.createdBy} · Updated by {record.updatedByName || record.updatedBy}</p>
-    <Alert tone="info">Egg and feed stock posting is pending. This submission preserves report evidence; stock balances are not yet updated.</Alert>
+    <Alert tone="info">{(snapshot?.summary || record.publishedSummary)?.feedPublication ? 'Published feed consumption has been posted to inventory. Draft edits do not change stock until resubmission.' : 'This report has no stock-enabled feed publication yet. A new submission posts its full selected consumption.'} Egg stock publication remains pending Phase 8.</Alert>
     {record.returnReason && <Alert tone="warning">Returned: {record.returnReason}. The previous published revision remains effective.</Alert>}
     {!snapshot && record.status !== 'submitted' && <p className="text-muted">Draft totals are previews. Missing inputs still require explicit values before submission.</p>}
     <div className="reports__actions"><Button variant={snapshot ? 'secondary' : 'primary'} onClick={() => setSnapshot(null)}>Current report</Button>{record.revisions.map((r) => <Button key={r.id} variant={snapshot?.id === r.id ? 'primary' : 'secondary'} onClick={() => setSnapshot(r)}>Revision {r.number}</Button>)}</div>
