@@ -3,6 +3,9 @@ import { reportRouter, populationRouter, measurementRouter, controller as report
 import { visitsRouter, prescriptionsRouter, medicationRouter } from './modules/clinical/routes.js';
 import { inventoryRouter } from './modules/inventory/routes.js';
 import { formulaRouter } from './modules/formulas/routes.js';
+import { productionRouter, salesRouter, expensesRouter, financeRouter } from './modules/commerce/routes.js';
+import { evidenceRouter } from './modules/evidence/routes.js';
+import { notificationRouter } from './modules/notifications/routes.js';
 import { permission } from './middleware/auth.js';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
@@ -65,6 +68,12 @@ export function createApp(config) {
   app.use('/api/v1/medication-tasks', medicationRouter);
   app.use('/api/v1/inventory', inventoryRouter);
   app.use('/api/v1/feed-formulas', formulaRouter);
+  app.use('/api/v1/egg-production', productionRouter);
+  app.use('/api/v1/sales', salesRouter);
+  app.use('/api/v1/expenses', expensesRouter);
+  app.use('/api/v1/finance', financeRouter);
+  app.use('/api/v1/evidence', evidenceRouter);
+  app.use('/api/v1/notifications', notificationRouter);
   app.use((req, res, next) => next(new AppError(404, 'NOT_FOUND', 'Endpoint not found.')));
   app.use(errorHandler);
   return app;

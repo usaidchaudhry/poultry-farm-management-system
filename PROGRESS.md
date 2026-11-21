@@ -182,6 +182,36 @@ Phase 6 supersedes the historical feed deferral above. Egg intents remain deferr
 - [x] Worked example, precision, missing rates, return/resubmit, stale edits, concurrent finalization, privacy/grant revocation, retry deduplication, snapshot preservation and full database-restart checks.
 - [x] Separate Farm Manager/Operation Manager browser handoff with mobile composition, preview/save/finalize, hidden prices and new draft/history navigation.
 - [x] Verification: 57 backend checks, 9 mock checks, clean-browser workflow, production build, 66 server syntax checks, documentation links and whitespace checks passed; final focused formula/restart checks also passed.
-- [ ] MERN Phase 8: egg stock publication, sales, and basic finance.
+- [x] MERN Phase 8: egg stock publication, sales, and basic finance. See `docs/MERN_PHASE_8_IMPLEMENTATION.md`.
 
 Phase 7 implementation and verification are complete. Formulas do not manufacture feed, consume inventory, or create expenses. Egg posting/sales remain Phase 8; durable pending-costing reminders remain Phase 9.
+
+### MERN Phase 8 completion (22 November 2026)
+
+- [x] System egg-category items, farm collection/saleability policy, frozen publication evidence, migration and new/demo farm setup without fabricated quantities.
+- [x] Report-derived category receipts/correction deltas with source uniqueness, historical/current negative-stock protection, full publication rollback and preserved draft/return baseline.
+- [x] Explicit company-supervisor legacy egg initialization; immutable earlier snapshots/intents and no automatic physical opening assumptions.
+- [x] Multi-line whole-egg/Peti sales, Decimal128 selected-unit prices, atomic deductions, durable retries, payment updates, dispatch and reasoned pre-dispatch cancellation.
+- [x] Controlled expenses, immutable content, invoice/actual-receipt deduplication, void-and-replacement and linked evidence.
+- [x] Server daily recorded revenue/unpaid/cost/surplus with completeness note and paginated source drill-down; no duplicate expense from formulas/stock.
+- [x] Live asynchronous production/stock/policy, sales and finance screens; scoped/date-filtered lists/details/forms, permission controls and preserved explicit mock screens.
+- [x] API stock/concurrency/rollback/finance examples, restart persistence, and clean-browser production-to-sale-to-finance workflow including mobile stock/sales.
+- [x] Verification: 64 backend checks, 9 mock checks, clean-browser workflow, production build, 72 server syntax checks, documentation links and whitespace checks passed; focused final report/policy/legacy/restart checks also passed.
+- [x] MERN Phase 9: evidence, medical alerts, and durable in-app reminders. See `docs/MERN_PHASE_9_IMPLEMENTATION.md`.
+
+Phase 8 supersedes the historical egg deferral above. Changes are included with Phase 9 in the user-requested local commit. Images/attachments and durable alerts are completed in Phase 9 below. Customer returns, cash/refund accounting, inventory valuation, and official ROI remain outside the implemented baseline.
+
+
+### MERN Phase 9 implementation (22 November 2026)
+
+- [x] Private persistent-disk adapter, generated storage names, declared MIME/signature/container checks, 5 MiB/image and five retained images/parent limits.
+- [x] MongoDB file/comment metadata, current parent permission/scope/date checks on every download and mutation, archived-context guards, failed-link cleanup and restart-safe orphan cleanup.
+- [x] Shared images/comments on saved reports/post-mortem, clinical visits, expenses and medical alerts; attributed append-only comments, own draft deletion audit, submitted report sealing and retained closed-parent evidence.
+- [x] Farm-scoped manual medical alerts, capability-based active assigned clinician/management routing, visible no-Doctor Owner fallback and per-recipient inbox delivery timestamps.
+- [x] Shared open/acknowledged/resolved lifecycle, separate attributed responses, required response/resolution notes, prior critical/emergency acknowledgement, optimistic versions and independent recipient seen/acknowledgement state.
+- [x] Guard-serialized restart-safe low-stock, overdue medication, awaiting-costing and configured demonstration mortality scans; persisted condition episodes, source-driven clearing, recipient refresh and safe worker shutdown.
+- [x] Live polling inbox and unread bell; farm/source/severity/state filters, pagination, retries, mobile dialogs, authenticated previews and exact source workflow links.
+- [x] API checks cover cross-farm/copied URL denial, validation/limits, sealed/locked retention, revocation, concurrent reminder deduplication, condition recurrence and real medication-outcome clearing. MongoDB restart verification includes image bytes, recipient acknowledgement and persisted reminder identity.
+- [x] Verification: 69 backend checks, 9 mock checks, full clean-browser workflow, production build, 85 server syntax checks, documentation links and whitespace checks passed. Final focused evidence checks also passed after storage-recovery and archived-context safeguards.
+
+Phase 9 adds no external delivery service, automatic treatment advice, stock issue from medication, image-revision snapshot claims, or production queue platform. Persistent private disk and MongoDB must be backed up together. Current open alerts do not grant old source-record history. Phases 8 and 9 are included together in the user-requested local commit; no remote push was performed.

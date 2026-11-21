@@ -22,6 +22,8 @@ export function readConfig(env = process.env) {
   if (!['lax', 'strict', 'none'].includes(sameSite) || (sameSite === 'none' && !secure)) throw new Error('Invalid cookie SameSite/secure combination.');
   if (production && (!secure || origin.protocol !== 'https:')) throw new Error('Production requires HTTPS origin and secure cookies.');
   const trustProxy = Number(env.TRUST_PROXY || 0);
+  const mortalityAlertPercent = Number(env.MORTALITY_ALERT_PERCENT ?? 2);
+  if (!Number.isFinite(mortalityAlertPercent) || mortalityAlertPercent <= 0 || mortalityAlertPercent > 100) throw new Error('MORTALITY_ALERT_PERCENT must be greater than zero and at most 100.');
   if (!Number.isInteger(trustProxy) || trustProxy < 0 || trustProxy > 5) throw new Error('TRUST_PROXY must be a hop count from 0 to 5.');
   return {
     nodeEnv: env.NODE_ENV || 'development', production,
@@ -30,6 +32,7 @@ export function readConfig(env = process.env) {
     sessionMaxAge: positiveInteger('SESSION_MAX_AGE_MS', 28_800_000, 604_800_000),
     cookieSecure: secure, cookieSameSite: sameSite, cookieName: 'layerflow.sid',
     trustProxy, timezone, uploadDir: resolve(env.UPLOAD_DIR || '../.data/uploads'),
-    loginLimit: 20,
+    loginLimit: 20, mortalityAlertPercent,
+    reminderIntervalMs: positiveInteger('REMINDER_INTERVAL_MS', 60000, 3600000),
   };
 }

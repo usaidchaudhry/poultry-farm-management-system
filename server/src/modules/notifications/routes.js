@@ -1,0 +1,12 @@
+import { Router } from 'express';
+import { body, validId } from '../../lib/validation.js';
+import { permission } from '../../middleware/auth.js';
+import { alertInput, actionInput } from './validation.js';
+import * as controller from './controller.js';
+export const notificationRouter = Router();
+notificationRouter.use(permission('notifications.view'));
+notificationRouter.get('/unread', controller.unread);
+notificationRouter.get('/', controller.list);
+notificationRouter.post('/', permission('notifications.raise'), body(alertInput), controller.raise);
+notificationRouter.get('/:id', validId, controller.detail);
+for (const action of ['seen', 'acknowledge', 'respond', 'resolve']) notificationRouter.post(`/:id/${action}`, validId, body(actionInput(action)), controller.action(action));

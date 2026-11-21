@@ -22,11 +22,18 @@ import { hierarchyModels as H } from '../src/modules/organization/models.js';
 import { randomUUID } from 'node:crypto';
 import { inventoryModels, InventoryItem, StockLocation, StockBalance, StockMovement, StockOperation, FeedPublication } from '../src/modules/inventory/models.js';
 import { formulaModels, FeedFormula, FormulaVersion, FormulaPricing, FormulaSnapshot } from '../src/modules/formulas/models.js';
+import { commerceModels, EggPolicy, EggPublication, Sale, Expense, ExpenseClaim } from '../src/modules/commerce/models.js';
+import { evidenceModels, EvidenceFile, EvidenceComment } from '../src/modules/evidence/models.js';
+import { notificationModels, Notification, NotificationRecipient } from '../src/modules/notifications/models.js';
+import { runReminders } from '../src/modules/notifications/worker.js';
+import { cleanupFiles, filePath } from '../src/modules/evidence/storage.js';
+import { readdir, writeFile, utimes, mkdir, mkdtemp, rm } from 'node:fs/promises';
 
 const initialPassword = 'Temporary-test-password-123';
 const changedPassword = 'Changed-test-password-456';
 const origin = 'http://localhost:5173';
 let replica; let app; let config; let owner; let admin; let reportStock;
+const verificationRoot = resolve('../.data/verification');
 
 async function client(email = 'owner@layerflow.test', password = initialPassword) {
   const agent = request.agent(app);
@@ -35,6 +42,10 @@ async function client(email = 'owner@layerflow.test', password = initialPassword
   csrf = login.body.data.csrfToken;
   return {
     agent, user: login.body.data.user,
+    async upload(path, buffer, mime = 'image/png', status = 201) {
+      const response = await agent.post(`/api/v1${path}`).set('Origin', origin).set('X-CSRF-Token', csrf).set('Content-Type', mime).send(buffer);
+      assert.equal(response.status, status, `UPLOAD ${path}: ${JSON.stringify(response.body)}`); return response;
+    },
     async send(method, path, input, status = method === 'post' && ['/users', '/roles'].includes(path) ? 201 : 200, key) {
       const request = agent[method](`/api/v1${path}`).set('Origin', origin).set('X-CSRF-Token', csrf);
       if (key) request.set('Idempotency-Key', key);
@@ -59,8 +70,10 @@ async function staff(roleCode, prefix = 'staff') {
 }
 
 before(async () => {
+  await mkdir(verificationRoot, { recursive: true });
+  const privateImages = await mkdtemp(resolve(verificationRoot, 'api-images-'));
   replica = await MongoMemoryReplSet.create({ binary: { downloadDir: resolve('../.data/mongodb-binaries') }, replSet: { count: 1, storageEngine: 'wiredTiger' } });
-  config = { ...readConfig({ NODE_ENV: 'test', MONGODB_URI: replica.getUri('layerflow_test'), SESSION_SECRET: 'a-test-only-random-session-secret-with-enough-characters' }), loginLimit: 1000 };
+  config = { ...readConfig({ NODE_ENV: 'test', MONGODB_URI: replica.getUri('layerflow_test'), SESSION_SECRET: 'a-test-only-random-session-secret-with-enough-characters', UPLOAD_DIR: privateImages }), loginLimit: 1000 };
   await connectDatabase(config.mongoUri);
   await applyMigrations(config);
   app = createApp(config);
@@ -68,6 +81,8 @@ before(async () => {
 
 beforeEach(async () => {
   reportStock = null;
+  for (const model of [...evidenceModels, ...notificationModels]) await model.deleteMany({});
+  for (const model of commerceModels) await model.deleteMany({});
   for (const model of formulaModels) await model.deleteMany({});
   for (const model of inventoryModels) await model.deleteMany({});
   for (const model of clinicalModels) await model.deleteMany({});
@@ -81,7 +96,14 @@ beforeEach(async () => {
   await admin.send('post', '/auth/change-password', { currentPassword: initialPassword, newPassword: changedPassword });
 });
 
-after(async () => { await mongoose.disconnect(); if (replica) await replica.stop(); });
+after(async () => {
+  await mongoose.disconnect(); if (replica) await replica.stop();
+  if (config?.uploadDir) {
+    const target = resolve(config.uploadDir);
+    if (!target.startsWith(resolve(verificationRoot, 'api-images-'))) throw new Error('Refusing image cleanup outside the generated verification directory.');
+    await rm(target, { recursive: true, force: true });
+  }
+});
 
 test('health/readiness are safe, bootstrap is one-time, passwords are hashed, and indexes/seeds are repeatable', async () => {
   await request(app).get('/api/v1/health').expect(200);
@@ -476,7 +498,7 @@ test('daily report feed posts once, refunds or changes location on revisions, an
   report = (await manager.send('post', `/daily-reports/${report.id}/submit`, { version: report.version })).body.data;
   assert.equal((await StockBalance.findOne({ itemId: reportStock.itemReference, locationId: reportStock.locationReference })).amount, 9948000);
   await manager.send('post', `/daily-reports/${report.id}/submit`, { version: 1 }, 409);
-  assert.equal(await StockMovement.countDocuments({ reportId: report.id }), 1);
+  assert.equal(await StockMovement.countDocuments({ reportId: report.id, itemId: reportStock.itemReference }), 1);
   const sourceMovement = await StockMovement.findOne({ reportId: report.id });
   await admin.send('post', `/inventory/movements/${sourceMovement._id}/reverse`, { businessDate: today(), reason: 'Cannot manually undo report stock' }, 409, randomUUID());
   const target = (await admin.send('post', '/inventory/locations', { farmId: f.farmA.id, name: 'House feed store', kind: 'store' }, 201)).body.data;
@@ -503,7 +525,7 @@ test('daily report feed posts once, refunds or changes location on revisions, an
   report = (await manager.send('post', `/daily-reports/${report.id}/submit`, { version: report.version, reason: 'Zero actual recorded consumption' })).body.data;
   assert.equal((await StockBalance.findOne({ itemId: reportStock.itemReference, locationId: target.id })).amount, 100000);
   assert.equal(await FeedPublication.countDocuments({ reportId: report.id }), 5);
-  assert.equal(report.publishedSummary.stockPosting, 'feed-posted-eggs-deferred-phase-8');
+  assert.equal(report.publishedSummary.stockPosting, 'posted');
 });
 test('report feed validates real catalog, farm and consumption path; legacy reports are not silently backfilled', async () => {
   const f = await hierarchyFixture(today());
@@ -561,7 +583,7 @@ test('report lifecycle preserves revisions and publishes only delta effects with
   assert.equal(detail.revisions[0].data.mortality, 3);
   assert.equal(detail.intents[0].eggDelta.standard, 10);
   assert.equal(detail.intents[0].feedKgDelta, 0);
-  assert.equal(detail.intents[0].status, 'deferred');
+  assert.equal(detail.intents[0].status, 'posted');
   const movements = await BirdMovement.find({ flockId: f.flock.id });
   assert.equal(movements.reduce((sum, m) => sum + m.count, 0), 497);
   assert.equal(await PublicationIntent.countDocuments({ reportId: report.id }), 2);
@@ -1026,4 +1048,256 @@ test('formula validation and concurrent finalization protect catalog, stable row
   const archived = (await f.manager.send('post', '/feed-formulas/' + row.id + '/archive', { version: latest.version, reason: 'Completed planning document' })).body.data;
   assert.equal(archived.archived, true);
   assert.equal((await f.manager.agent.get('/api/v1/feed-formulas?archived=true').expect(200)).body.data.length, 1);
+});
+
+async function commerceFixture() {
+  const f = await hierarchyFixture(today());
+  const operator = await assigned('operation_manager', 'commerce-operator', [f.farmA.id]);
+  const reportData = { ...completeReport(0), eggs: { jumbo: 0, starter: 0, standard: 720, small: 0, floor: 10, broken: 3, discard: 2 }, feed: { ...completeReport().feed, bags: 0, bagSizeKg: 0, additionalKg: 0 } };
+  let report = await createReport(f, today(), reportData);
+  report = (await admin.send('post', '/daily-reports/' + report.id + '/submit', { version: report.version })).body.data;
+  const config = await EggPolicy.findOne({ farmId: f.farmA.id });
+  const item = await InventoryItem.findOne({ eggCategory: 'standard' });
+  const saleInput = (quantity = 1, extra = {}) => ({ farmId: f.farmA.id, locationId: String(config.locationId), businessDate: today(), buyer: 'Verified buyer', paymentStatus: 'pending', lines: [{ key: 'line-a', category: 'standard', quantity, unit: 'peti', unitPrice: '18000' }], ...extra });
+  const postSale = async (input = saleInput(), key = randomUUID(), status = 201, actor = operator) => (await actor.send('post', '/sales', input, status, key)).body;
+  const balance = async () => (await StockBalance.findOne({ itemId: item._id, locationId: config.locationId })).amount / 1000;
+  return { ...f, operator, reportData, report, config, item, saleInput, postSale, balance };
+}
+test('egg publication derives saleable categories once; whole-Peti sales, retries and overselling reconcile', async () => {
+  const f = await commerceFixture();
+  assert.equal(await f.balance(), 720); assert.equal(f.report.publishedSummary.saleableEggs, 720);
+  await admin.send('post', '/daily-reports/' + f.report.id + '/submit', { version: 1 }, 409);
+  assert.equal(await EggPublication.countDocuments({ reportId: f.report.id }), 1);
+  const stock = (await f.operator.agent.get('/api/v1/egg-production/farms/' + f.farmA.id + '/stock').expect(200)).body.data.find((r) => r.category === 'standard');
+  assert.equal(stock.petiEquivalent, '2.000');
+  const key = randomUUID(); const sale = (await f.postSale(f.saleInput(), key)).data;
+  assert.equal(sale.total, '18000.00'); assert.equal(sale.totalEggs, 360); assert.equal(await f.balance(), 360);
+  assert.equal((await f.postSale(f.saleInput(), key)).data.id, sale.id); assert.equal(await f.balance(), 360);
+  await f.postSale(f.saleInput(2), key, 409);
+  await f.postSale(f.saleInput(2), randomUUID(), 409);
+  await f.postSale(f.saleInput(1, { lines: [{ key: 'a', category: 'standard', quantity: 1, unit: 'egg', unitPrice: '1' }, { key: 'b', category: 'jumbo', quantity: 1, unit: 'egg', unitPrice: '1' }] }), randomUUID(), 409);
+  assert.equal(await f.balance(), 360); assert.equal(await Sale.countDocuments(), 1);
+  const production = (await admin.agent.get('/api/v1/egg-production').expect(200)).body.data[0];
+  assert.equal(production.eggs.floor, 10); assert.equal(production.saleableEggs, 720);
+  const evidence = await EggPublication.findOne({ reportId: f.report.id }); evidence.counts = {}; await assert.rejects(evidence.save(), /append-only/);
+});
+test('sold eggs block report reductions; cancellation restores stock and allows a transactional correction', async () => {
+  const f = await commerceFixture(); const sale = (await f.postSale()).data; let report = f.report;
+  report = (await admin.send('post', '/daily-reports/' + report.id + '/return', { version: report.version, reason: 'Correct collection evidence' })).body.data;
+  report = (await admin.send('patch', '/daily-reports/' + report.id, { version: report.version, data: { ...f.reportData, eggs: { ...f.reportData.eggs, standard: 100 } } })).body.data;
+  assert.equal(await f.balance(), 360);
+  await admin.send('post', '/daily-reports/' + report.id + '/submit', { version: report.version, reason: 'Counted only one hundred' }, 409);
+  assert.equal(await EggPublication.countDocuments({ reportId: report.id }), 1); assert.equal(await ReportRevision.countDocuments({ reportId: report.id }), 1);
+  assert.equal((await DailyReport.findById(report.id)).publishedSummary.saleableEggs, 720);
+  const cancelled = (await f.operator.send('post', '/sales/' + sale.id + '/cancel', { version: sale.version, reason: 'Cancelled before physical dispatch' })).body.data;
+  assert.equal(cancelled.status, 'cancelled'); assert.equal(await f.balance(), 720);
+  await f.operator.send('post', '/sales/' + sale.id + '/cancel', { version: cancelled.version, reason: 'No duplicate return to stock' }, 409);
+  report = (await admin.send('post', '/daily-reports/' + report.id + '/submit', { version: report.version, reason: 'Corrected after cancelled dispatch' })).body.data;
+  assert.equal(await f.balance(), 100); assert.equal(report.publishedSummary.saleableEggs, 100);
+  const finance = (await f.operator.agent.get('/api/v1/finance').expect(200)).body.meta.totals; assert.equal(finance.revenue, '0.00');
+});
+test('concurrent egg sales cannot oversell; dispatched sales and posted content cannot be rewritten', async () => {
+  const f = await commerceFixture(); const clients = await Promise.all([client(owner.email, changedPassword), client(owner.email, changedPassword)]);
+  const results = await Promise.allSettled(clients.map((c) => f.postSale(f.saleInput(2), randomUUID(), 201, c)));
+  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1); assert.equal(await f.balance(), 0);
+  let sale = results.find((r) => r.status === 'fulfilled').value.data;
+  const blocked = await admin.send('patch', '/organization/farms/' + f.farmA.id + '/status', { version: f.farmA.version, archived: true }, 409); assert.equal(blocked.body.code, 'UNDISPATCHED_SALES');
+  sale = (await f.operator.send('post', '/sales/' + sale.id + '/dispatch', { version: sale.version })).body.data;
+  await f.operator.send('post', '/sales/' + sale.id + '/cancel', { version: sale.version, reason: 'Physical return is unsupported' }, 409);
+  const snapshot = await Sale.findById(sale.id); snapshot.lines[0].quantity = 3; await assert.rejects(snapshot.save(), /immutable/);
+  sale = (await f.operator.send('post', '/sales/' + sale.id + '/payment', { version: sale.version, paymentStatus: 'paid' })).body.data;
+  assert.equal(sale.paymentStatus, 'paid'); assert.equal(await f.balance(), 0);
+  await f.operator.send('post', '/sales/' + sale.id + '/payment', { version: sale.version - 1, paymentStatus: 'pending' }, 409);
+});
+test('finance example, payment status, source deduplication and void/replacement produce exact recorded results', async () => {
+  const f = await commerceFixture(); let sale = (await f.postSale()).data;
+  const source = await StockMovement.findOne({ itemId: reportStock.itemReference, type: 'opening' });
+  const input = { farmId: f.farmA.id, businessDate: today(), category: 'feed', amount: '7000', description: 'Recorded feed invoice', reference: 'INV-7000', sourceMovementId: String(source._id) };
+  const key = randomUUID(); let expense = (await f.operator.send('post', '/expenses', input, 201, key)).body.data;
+  assert.equal((await f.operator.send('post', '/expenses', input, 201, key)).body.data.id, expense.id);
+  await f.operator.send('post', '/expenses', { ...input, reference: 'Different invoice same source' }, 409, randomUUID());
+  await f.operator.send('post', '/expenses', { ...input, sourceMovementId: null, reference: 'inv-7000' }, 409, randomUUID());
+  let totals = (await f.operator.agent.get('/api/v1/finance').expect(200)).body.meta.totals;
+  assert.deepEqual(totals, { revenue: '18000.00', unpaid: '18000.00', recordedCost: '7000.00', operatingSurplus: '11000.00', costsIncomplete: true });
+  const ingredient = (await admin.send('post', '/inventory/items', { name: 'Financial example ingredient', category: 'ingredient', unit: 'kg' }, 201)).body.data;
+  let formula = (await admin.send('post', '/feed-formulas', { farmId: f.farmA.id, code: 'NO-EXPENSE', name: 'Planning only', businessDate: today(), rows: [{ key: 'row', itemId: ingredient.id, kg: '100' }] }, 201, randomUUID())).body.data;
+  formula = (await admin.send('post', '/feed-formulas/' + formula.id + '/submit', { version: formula.version })).body.data;
+  formula = (await admin.send('put', '/feed-formulas/' + formula.id + '/pricing', { version: formula.version, rates: [{ key: 'row', rate: '14' }] })).body.data;
+  await admin.send('post', '/feed-formulas/' + formula.id + '/finalize', { version: formula.version });
+  assert.deepEqual((await f.operator.agent.get('/api/v1/finance').expect(200)).body.meta.totals, totals);
+  sale = (await f.operator.send('post', '/sales/' + sale.id + '/payment', { version: sale.version, paymentStatus: 'paid' })).body.data;
+  totals = (await f.operator.agent.get('/api/v1/finance').expect(200)).body.meta.totals;
+  assert.equal(totals.revenue, '18000.00'); assert.equal(totals.unpaid, '0.00');
+  const replacementKey = randomUUID(); const replacementInput = { version: expense.version, reason: 'Correct invoiced amount', expense: { ...input, amount: '6000' } };
+  const oldId = expense.id;
+  expense = (await f.operator.send('post', '/expenses/' + oldId + '/replace', replacementInput, 200, replacementKey)).body.data;
+  assert.equal((await f.operator.send('post', '/expenses/' + oldId + '/replace', replacementInput, 200, replacementKey)).body.data.id, expense.id);
+  assert.equal((await Expense.findById(oldId)).status, 'voided'); assert.equal(expense.replacesId, oldId);
+  totals = (await f.operator.agent.get('/api/v1/finance').expect(200)).body.meta.totals; assert.equal(totals.operatingSurplus, '12000.00');
+  await f.operator.send('post', '/expenses/' + expense.id + '/void', { version: expense.version, reason: 'Invoice withdrawn' });
+  totals = (await f.operator.agent.get('/api/v1/finance').expect(200)).body.meta.totals; assert.equal(totals.recordedCost, '0.00');
+  await f.operator.send('post', '/expenses', input, 409, randomUUID());
+  assert.equal(await ExpenseClaim.countDocuments(), 2);
+});
+test('commerce validates units, categories, source scope and date policies without spending another farm stock', async () => {
+  const f = await commerceFixture(); const other = await assigned('operation_manager', 'other-commerce', [f.farmB.id]); const manager = await assigned('farm_manager', 'farm-commerce', [f.farmA.id]);
+  await other.agent.get('/api/v1/sales?farmId=' + f.farmA.id).expect(404);
+  await other.agent.get('/api/v1/egg-production/farms/' + f.farmA.id + '/stock').expect(404);
+  await f.postSale(f.saleInput(), randomUUID(), 404, other);
+  await manager.agent.get('/api/v1/finance').expect(403); await f.postSale(f.saleInput(), randomUUID(), 403, manager);
+  await f.postSale(f.saleInput(1, { lines: [{ key: 'a', category: 'floor', quantity: 1, unit: 'egg', unitPrice: '10' }] }), randomUUID(), 422);
+  await f.postSale(f.saleInput(1, { lines: [{ key: 'a', category: 'standard', quantity: 1.5, unit: 'peti', unitPrice: '10' }] }), randomUUID(), 422);
+  await f.postSale(f.saleInput(1, { total: '1' }), randomUUID(), 422);
+  await f.postSale(f.saleInput(1, { businessDate: daysAgo(-1) }), randomUUID(), 422);
+  await f.operator.agent.get('/api/v1/finance?from=' + daysAgo(3) + '&to=' + today()).expect(403);
+  await f.operator.send('post', '/expenses', { farmId: f.farmA.id, businessDate: today(), category: 'other', amount: '1', description: '' }, 422, randomUUID());
+  await f.operator.send('put', '/egg-production/farms/' + f.farmA.id + '/policy', { version: 1, locationId: String(f.config.locationId), categories: ['standard'], reason: 'Only supervisors configure policy' }, 403);
+  assert.equal(await f.balance(), 720);
+});
+test('egg policy versions affect future reports while corrected reports retain their original room and saleability', async () => {
+  const f = await commerceFixture(); const room = (await admin.send('post', '/inventory/locations', { farmId: f.farmA.id, name: 'New collection room', kind: 'collection' }, 201)).body.data;
+  const policy = (await admin.send('put', '/egg-production/farms/' + f.farmA.id + '/policy', { version: 1, locationId: room.id, categories: ['standard'], reason: 'New room for future reports' })).body.data; assert.equal(policy.version, 2);
+  let report = (await admin.send('post', '/daily-reports/' + f.report.id + '/return', { version: f.report.version, reason: 'Adjust recorded production' })).body.data;
+  report = (await admin.send('patch', '/daily-reports/' + report.id, { version: report.version, data: { ...f.reportData, eggs: { ...f.reportData.eggs, standard: 730, jumbo: 2 } } })).body.data;
+  report = (await admin.send('post', '/daily-reports/' + report.id + '/submit', { version: report.version, reason: 'Ten additional counted eggs' })).body.data;
+  assert.equal(report.publishedSummary.eggPublication.policyVersion, 1); assert.equal(report.publishedSummary.eggPublication.locationId, String(f.config.locationId)); assert.equal(await f.balance(), 730);
+  const details = (await admin.agent.get('/api/v1/daily-reports/' + report.id).expect(200)).body.data;
+  assert.equal(details.summary.saleableEggs, 732); assert.equal(details.summary.stockPosting, 'posted');
+  const house = await f.create('house', { name: 'Second production house', farmId: f.farmA.id });
+  const flock = await f.create('flock', { name: 'Second production flock', houseId: house.id, placementDate: today(), initialCount: 100 });
+  let second = await createReport({ flock }, today(), f.reportData);
+  second = (await admin.send('post', '/daily-reports/' + second.id + '/submit', { version: second.version })).body.data;
+  assert.equal(second.publishedSummary.eggPublication.policyVersion, 2); assert.equal(second.publishedSummary.eggPublication.locationId, room.id);
+});
+
+test('legacy egg initialization is explicit, migration-safe, source-controlled and repeatable without duplicate stock', async () => {
+  const f = await commerceFixture();
+  // Simulate a pre-Phase-8 install: report evidence exists, egg collections do not.
+  await StockMovement.deleteMany({ reportId: f.report.id, type: 'report-eggs' });
+  await EggPublication.deleteMany({ reportId: f.report.id });
+  await StockBalance.deleteMany({ itemId: { $in: (await InventoryItem.find({ category: 'egg' })).map((r) => r._id) } });
+  await Migration.deleteOne({ _id: '007-eggs-sales-finance' }); await applyMigrations(config);
+  assert.equal(await EggPublication.countDocuments(), 0);
+  await f.operator.send('post', '/egg-production/' + f.report.id + '/backfill', { reason: 'Operators cannot initialize unknown old stock' }, 403);
+  const first = (await admin.send('post', '/egg-production/' + f.report.id + '/backfill', { reason: 'Verified physical opening excludes these collected eggs' })).body.data;
+  const repeat = (await admin.send('post', '/egg-production/' + f.report.id + '/backfill', { reason: 'Retry the verified initialization' })).body.data;
+  assert.equal(first.id, repeat.id); assert.equal(await f.balance(), 720);
+  assert.equal(await StockMovement.countDocuments({ reportId: f.report.id, type: 'report-eggs' }), 1);
+  const source = await StockMovement.findOne({ reportId: f.report.id, type: 'report-eggs' });
+  await admin.send('post', '/inventory/movements/' + source._id + '/reverse', { businessDate: today(), reason: 'Production must be corrected from report' }, 409, randomUUID());
+});
+
+const imageFixture = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1cAAAAASUVORK5CYII=', 'base64');
+const evidencePath = (type, id) => '/evidence/' + type + '/' + id;
+test('phase 9 private evidence validates type, limits, scope, comments and sealed report retention', async () => {
+  const f = await hierarchyFixture(today()); const report = await createReport(f);
+  const manager = await assigned('farm_manager', 'evidence-author', [f.farmA.id]);
+  const outsider = await assigned('farm_manager', 'evidence-outsider', [f.farmB.id]);
+  const path = evidencePath('report', report.id); const upload = path + '/files?name=postmortem.png&purpose=post-mortem';
+  const first = (await manager.upload(upload, imageFixture)).body.data;
+  assert.equal(first.storageKey, undefined); assert.equal(first.purpose, 'post-mortem');
+  const download = await manager.agent.get('/api/v1' + first.downloadPath).expect(200); assert.equal(download.headers['content-type'], 'image/png'); assert.equal(download.headers['cache-control'], 'no-store'); assert.equal(download.headers['x-content-type-options'], 'nosniff');
+  await outsider.agent.get('/api/v1' + first.downloadPath).expect(404);
+  await request(app).get('/api/v1' + first.downloadPath).expect(401);
+  await manager.upload(upload, imageFixture, 'image/jpeg', 422);
+  await manager.upload(upload, Buffer.from('not a PNG'), 'image/png', 422);
+  await manager.upload(upload, Buffer.alloc(5 * 1024 * 1024 + 1), 'image/png', 413);
+  await manager.send('post', path + '/comments', { text: 'Post-mortem image recorded without inferred diagnosis.' }, 201);
+  assert.equal((await manager.agent.get('/api/v1' + path)).body.data.comments[0].authorId, manager.user.id);
+  const deletable = (await manager.upload(upload, imageFixture)).body.data;
+  await admin.send('delete', '/evidence/files/' + deletable.id, undefined, 403);
+  await manager.send('delete', '/evidence/files/' + deletable.id);
+  await manager.agent.get('/api/v1' + deletable.downloadPath).expect(404);
+  for (let i=0; i<4; i++) await manager.upload(upload, imageFixture);
+  const diskBefore = (await readdir(config.uploadDir)).length;
+  await manager.upload(upload, imageFixture, 'image/png', 409);
+  assert.equal((await readdir(config.uploadDir)).length, diskBefore, 'failed linking cleans its prewritten file');
+  let submitted = (await manager.send('post', '/daily-reports/' + report.id + '/submit', { version: report.version })).body.data;
+  await manager.upload(upload, imageFixture, 'image/png', 409);
+  await manager.send('post', path + '/comments', { text: 'Closed record comment denied' }, 409);
+  await admin.send('post', '/daily-reports/' + report.id + '/return', { version: submitted.version, reason: 'Recheck retained evidence' });
+  await manager.send('delete', '/evidence/files/' + first.id, undefined, 409);
+  assert.ok((await EvidenceFile.findById(first.id)).sealedAt);
+  assert.equal(await AuditEvent.countDocuments({ action: 'evidence.draft-deleted' }), 1);
+});
+test('phase 9 clinical and expense attachments inherit parent locks, permissions and date windows; cleanup preserves linked images', async () => {
+  const f = await clinicalFixture(); const path = evidencePath('clinical-visit', f.visit.id);
+  const file = (await f.doctor.upload(path + '/files?name=visit.png', imageFixture)).body.data;
+  await f.manager.agent.get('/api/v1' + file.downloadPath).expect(403);
+  await f.doctor.send('post', '/prescriptions/' + f.prescription.id + '/finalize', { version: 1 });
+  await f.doctor.send('delete', '/evidence/files/' + file.id, undefined, 409);
+  const expense = (await admin.send('post', '/expenses', { farmId: f.farmA.id, businessDate: today(), category: 'electricity', amount: '10' }, 201, randomUUID())).body.data;
+  const receipt = (await admin.upload(evidencePath('expense', expense.id) + '/files?name=receipt.png', imageFixture)).body.data;
+  await admin.send('post', '/expenses/' + expense.id + '/void', { version: expense.version, reason: 'Retain original receipt after void' });
+  await admin.send('delete', '/evidence/files/' + receipt.id, undefined, 409);
+  await admin.agent.get('/api/v1' + receipt.downloadPath).expect(200);
+  const orphan = randomUUID() + '.png'; await writeFile(filePath(config, orphan), imageFixture); const old = new Date(Date.now() - 7200000); await utimes(filePath(config, orphan), old, old);
+  const linked = await EvidenceFile.findById(receipt.id); await utimes(filePath(config, linked.storageKey), old, old); await cleanupFiles(config);
+  assert.equal((await readdir(config.uploadDir)).includes(orphan), false); await admin.agent.get('/api/v1' + receipt.downloadPath).expect(200);
+  await ClinicalVisit.updateOne({ _id: f.visit.id }, { $set: { businessDate: daysAgo(5) } });
+  const restricted = await assigned('doctor', 'restricted-evidence', [f.farmA.id]); const role = await Role.findOne({ code: 'doctor' }); await Role.updateOne({ _id: role._id }, { $pull: { permissions: 'clinical.history.view' } });
+  await restricted.agent.get('/api/v1' + file.downloadPath).expect(403);
+  const archivedExpense = (await admin.send('post', '/expenses', { farmId: f.farmA.id, businessDate: today(), category: 'electricity', amount: '1' }, 201, randomUUID())).body.data;
+  await H.farm.updateOne({ _id: f.farmA.id }, { $set: { status: 'archived' } });
+  await admin.upload(evidencePath('expense', archivedExpense.id) + '/files?name=archived.png', imageFixture, 'image/png', 409);
+  assert.equal((await admin.agent.get('/api/v1' + evidencePath('expense', archivedExpense.id)).expect(200)).body.data.editable, false);
+
+});
+test('phase 9 medical routing, Owner fallback, independent seen/acknowledgement, response and critical resolution are durable', async () => {
+  const f = await hierarchyFixture(today()); const manager = await assigned('farm_manager', 'alert-manager', [f.farmA.id]);
+  let fallback = (await manager.send('post', '/notifications', { farmId: f.farmA.id, title: 'No clinician assigned', message: 'Review observed flock change', severity: 'warning' }, 201)).body.data;
+  assert.equal(fallback.ownerFallback, true); assert.equal(fallback.doctorCount, 0);
+  assert.ok(await NotificationRecipient.exists({ notificationId: fallback.id, userId: owner.id }));
+  const doctor = await assigned('doctor', 'alert-doctor', [f.farmA.id]); const other = await assigned('doctor', 'other-doctor', [f.farmB.id]);
+  let alert = (await manager.send('post', '/notifications', { farmId: f.farmA.id, title: 'Observed urgent change', message: 'Doctor review requested', severity: 'critical' }, 201)).body.data;
+  assert.equal(alert.doctorCount, 1); assert.equal(alert.ownerFallback, false);
+  await other.agent.get('/api/v1/notifications/' + alert.id).expect(404);
+  await manager.send('post', '/notifications', { farmId: f.farmB.id, title: 'Forbidden farm', message: 'Invalid scope', severity: 'warning' }, 404);
+  assert.equal((await doctor.agent.get('/api/v1/notifications/unread')).body.data.count, 1);
+  await doctor.send('post', '/notifications/' + alert.id + '/seen', {});
+  assert.equal((await doctor.agent.get('/api/v1/notifications/unread')).body.data.count, 0);
+  assert.equal((await NotificationRecipient.findOne({ notificationId: alert.id, userId: manager.user.id })).seenAt, undefined);
+  await doctor.send('post', '/notifications/' + alert.id + '/resolve', { version: alert.version, note: 'Needs acknowledgement first' }, 409);
+  await doctor.send('post', '/notifications/' + alert.id + '/respond', { version: alert.version, note: '' }, 422);
+  alert = (await doctor.send('post', '/notifications/' + alert.id + '/acknowledge', { version: alert.version })).body.data;
+  await manager.send('post', '/notifications/' + alert.id + '/respond', { version: alert.version, note: 'No clinical response grant' }, 403);
+  alert = (await doctor.send('post', '/notifications/' + alert.id + '/respond', { version: alert.version, note: 'Recorded assessment; follow the documented clinical visit.' })).body.data;
+  await admin.send('post', '/notifications/' + alert.id + '/resolve', { version: 1, note: 'Stale resolution denied' }, 409);
+  alert = (await doctor.send('post', '/notifications/' + alert.id + '/resolve', { version: alert.version, note: 'Follow-up documented and reviewed.' })).body.data;
+  const details = (await doctor.agent.get('/api/v1/notifications/' + alert.id).expect(200)).body.data;
+  assert.equal(details.status, 'resolved'); assert.deepEqual(details.events.map((r) => r.action), ['raised', 'acknowledge', 'respond', 'resolve']);
+  assert.equal(details.events[2].actorId, doctor.user.id); assert.equal(details.events[2].clinical, true);
+  assert.equal((await NotificationRecipient.findOne({ notificationId: alert.id, userId: owner.id })).acknowledgedAt, undefined);
+  const current = await User.findById(doctor.user.id); await admin.send('put', '/users/' + doctor.user.id + '/scope', { version: current.version, farmIds: [f.farmB.id], siteIds: [] });
+  const relogged = await client('alert-doctor@layerflow.test', changedPassword); await relogged.agent.get('/api/v1/notifications/' + alert.id).expect(404);
+});
+test('phase 9 reminder scans deduplicate concurrent runs, clear source conditions and create a new low-stock episode', async () => {
+  const f = await formulaFixture(); let formula = (await f.manager.send('post', '/feed-formulas/' + f.formula.id + '/submit', { version: 1 })).body.data;
+  const balance = await StockBalance.findOne({ farmId: f.farmA.id }); await StockBalance.updateOne({ _id: balance._id }, { $set: { minimum: balance.amount + 1000 } });
+  const report = await createReport(f, today(), { ...completeReport(15), feed: { bags: 0, bagSizeKg: 0, additionalKg: 0 } }); await admin.send('post', '/daily-reports/' + report.id + '/submit', { version: 1 });
+  await Promise.all([runReminders(config), runReminders(config)]); assert.equal(await Notification.countDocuments({ kind: 'low-stock', status: 'open' }), 1); assert.equal(await Notification.countDocuments({ kind: 'awaiting-costing' }), 1); assert.equal(await Notification.countDocuments({ kind: 'mortality' }), 1);
+  const low = await Notification.findOne({ kind: 'low-stock' }); await f.operator.send('post', '/notifications/' + low._id + '/resolve', { version: 1, note: 'Must use inventory' }, 409);
+  const managerInbox = (await f.manager.agent.get('/api/v1/notifications').expect(200)).body.data; assert.equal(managerInbox.some((r) => r.kind === 'awaiting-costing' || r.kind === 'low-stock'), false);
+  formula = (await f.operator.send('post', '/feed-formulas/' + formula.id + '/return', { version: formula.version, reason: 'Composition revision requested' })).body.data;
+  await StockBalance.updateOne({ _id: balance._id }, { $set: { minimum: 0 } }); await runReminders(config); assert.equal((await Notification.findById(low._id)).status, 'resolved'); assert.equal(await Notification.countDocuments({ kind: 'awaiting-costing', status: 'resolved' }), 1);
+  await StockBalance.updateOne({ _id: balance._id }, { $set: { minimum: balance.amount + 1000 } }); await runReminders(config); assert.equal(await Notification.countDocuments({ kind: 'low-stock' }), 2); assert.equal(await Notification.countDocuments({ kind: 'low-stock', status: 'open' }), 1);
+});
+
+test('phase 9 overdue medication reminders retain source authorization and clear only after a real recorded outcome', async () => {
+  const f = await clinicalFixture(); await f.doctor.send('post', '/prescriptions/' + f.prescription.id + '/finalize', { version: 1 });
+  const task = await MedicationTask.findOne({ prescriptionId: f.prescription.id }).sort({ dueAt: 1 });
+  await MedicationTask.updateOne({ _id: task._id }, { $set: { dueAt: new Date(Date.now() - 7200000) } });
+  await runReminders(config); await runReminders(config);
+  assert.equal(await Notification.countDocuments({ kind: 'overdue-medication', sourceId: task._id, status: 'open' }), 1);
+  const reminder = await Notification.findOne({ kind: 'overdue-medication', sourceId: task._id });
+  const detail = (await f.manager.agent.get('/api/v1/notifications/' + reminder._id).expect(200)).body.data;
+  assert.match(detail.sourcePath, new RegExp('sourceId=' + task._id));
+  await f.manager.send('post', '/medication-tasks/' + task._id + '/outcomes', { version: 1, outcome: 'missed', actualAt: new Date().toISOString(), reason: 'Explicit reminder workflow verification' }, 201);
+  await runReminders(config); assert.equal((await Notification.findById(reminder._id)).status, 'resolved');
+  const medical = (await f.manager.send('post', '/notifications', { farmId: f.farmA.id, title: 'Image with medical alert', message: 'Evidence retained after resolution', severity: 'warning' }, 201)).body.data;
+  const image = (await f.manager.upload('/evidence/alert/' + medical.id + '/files?name=alert.png', imageFixture)).body.data;
+  await f.doctor.agent.get('/api/v1' + image.downloadPath).expect(200);
+  await f.doctor.send('post', '/notifications/' + medical.id + '/resolve', { version: 1, note: 'Review recorded and complete' });
+  await f.manager.send('delete', '/evidence/files/' + image.id, undefined, 409);
+  await f.doctor.agent.get('/api/v1' + image.downloadPath).expect(200);
 });

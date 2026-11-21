@@ -28,7 +28,7 @@ export default function ReportDetails({ record, onClose, onEdit, onChanged }) {
     {error && <Alert tone="error">{error}</Alert>}
     <p>Status: <strong>{record.status}</strong> · Version {record.version} · Published revision {record.publishedRevision || 'None'}</p>
     <p>Recorded by {record.createdByName || record.createdBy} · Updated by {record.updatedByName || record.updatedBy}</p>
-    <Alert tone="info">{(snapshot?.summary || record.publishedSummary)?.feedPublication ? 'Published feed consumption has been posted to inventory. Draft edits do not change stock until resubmission.' : 'This report has no stock-enabled feed publication yet. A new submission posts its full selected consumption.'} Egg stock publication remains pending Phase 8.</Alert>
+    <Alert tone="info">{(snapshot?.summary || record.publishedSummary)?.feedPublication ? 'Published feed consumption has been posted to inventory. Draft edits do not change stock until resubmission.' : 'This report has no stock-enabled feed publication yet. A new submission posts its full selected consumption.'} {(snapshot?.summary || record.publishedSummary)?.eggPublication ? 'Saleable egg production is posted to the collection room.' : 'Legacy egg production requires explicit stock initialization on the Egg production page.'}</Alert>
     {record.returnReason && <Alert tone="warning">Returned: {record.returnReason}. The previous published revision remains effective.</Alert>}
     {!snapshot && record.status !== 'submitted' && <p className="text-muted">Draft totals are previews. Missing inputs still require explicit values before submission.</p>}
     <div className="reports__actions"><Button variant={snapshot ? 'secondary' : 'primary'} onClick={() => setSnapshot(null)}>Current report</Button>{record.revisions.map((r) => <Button key={r.id} variant={snapshot?.id === r.id ? 'primary' : 'secondary'} onClick={() => setSnapshot(r)}>Revision {r.number}</Button>)}</div>
@@ -44,6 +44,8 @@ export default function ReportDetails({ record, onClose, onEdit, onChanged }) {
     {['medicines', 'vaccines'].map((key) => <section key={key}><h3>{label(key)}</h3>{data[key].length ? <ul>{data[key].map((r, i) => <li key={i}>{r.name} · {r.quantity ?? 'Quantity unspecified'} {r.unit} · {r.reference}{r.prescriptionId && ' - Prescription linked'}{r.administrationEventId && ' - Administration event linked'}</li>)}</ul> : <p>None recorded.</p>}</section>)}
     {Object.entries({ observations: 'In-house observations', postMortem: 'Post-mortem observations', comments: 'Comments', issues: 'Operational issues', doctorVisitReference: 'Doctor visit reference note', doctorRemarks: 'Doctor remarks', perPeNote: 'Per Pe note' }).map(([key, title]) => <section key={key}><h3>{title}</h3><p className="reports__evidence">{data[key] || 'None recorded.'}</p></section>)}
     <details><summary>Bird movement evidence</summary>{[...(summary.movements || []), ...(record.birdMovements || [])].map((m) => <p key={m.id}>{m.businessDate} · {m.type} · {m.count} · {m.reason} · {m.sourceKey}</p>)}</details>
+    <EvidencePanel type="report" id={record.id} readOnly={Boolean(snapshot) || record.status === 'submitted'} />
+    {snapshot && <p className="text-muted">The evidence panel shows retained parent evidence, including later additions. Revision totals above remain the submitted snapshot.</p>}
     {!snapshot && <div className="reports__stack">
       <Textarea label="Submission or return reason" value={reason} onChange={(e) => setReason(e.target.value)} hint="Required for returns, resubmissions, and historical writes." />
       <div className="reports__actions">
@@ -54,3 +56,4 @@ export default function ReportDetails({ record, onClose, onEdit, onChanged }) {
     </div>}
   </div></Modal>;
 }
+import EvidencePanel from '../evidence/EvidencePanel.jsx';

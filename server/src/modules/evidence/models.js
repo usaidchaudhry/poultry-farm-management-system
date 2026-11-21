@@ -1,0 +1,11 @@
+import mongoose from 'mongoose';
+const { Schema, model } = mongoose;
+const options = { timestamps: true, strict: 'throw', versionKey: false };
+const common = { organizationId: { type: Schema.Types.ObjectId, required: true }, parentType: { type: String, enum: ['report', 'clinical-visit', 'expense', 'alert'], required: true }, parentId: { type: Schema.Types.ObjectId, required: true }, authorId: { type: Schema.Types.ObjectId, required: true }, authorName: String };
+const file = new Schema({ ...common, storageKey: { type: String, unique: true }, name: String, mime: String, bytes: Number, purpose: { type: String, enum: ['general', 'post-mortem'], default: 'general' }, sealedAt: Date, deletedAt: Date }, options);
+file.index({ parentType: 1, parentId: 1, deletedAt: 1 });
+const comment = new Schema({ ...common, text: String }, { ...options, timestamps: { createdAt: true, updatedAt: false } });
+comment.pre('save', function () { if (!this.isNew) throw new Error('Evidence comments are append-only.'); });
+export const EvidenceFile = model('EvidenceFile', file);
+export const EvidenceComment = model('EvidenceComment', comment);
+export const evidenceModels = [EvidenceFile, EvidenceComment];

@@ -7,6 +7,7 @@ import { hashPassword } from '../modules/auth/passwords.js';
 import { audit } from '../modules/access/audit.js';
 import { openingMovement } from '../modules/reports/models.js';
 import { defaultLocations } from '../modules/inventory/models.js';
+import { setupEggFarm } from '../modules/commerce/setup.js';
 
 // Explicit, optional demonstration fixture. Never resets an existing hierarchy
 // or account and never ships a default password.
@@ -26,6 +27,7 @@ export async function seedDemoHierarchy(temporaryPassword) {
       const common = { organizationId: organization._id, siteId: site._id };
       const [farm] = await H.farm.create([{ ...common, name: `Demo Farm ${suffix}`, nameKey: `demo farm ${suffix.toLowerCase()}` }], { session });
       await defaultLocations(farm, session);
+      await setupEggFarm(farm, session);
       const [house] = await H.house.create([{ ...common, farmId: farm._id, name: `Demo House ${suffix}`, nameKey: `demo house ${suffix.toLowerCase()}`, capacity: 1000 }], { session });
       const [flock] = await H.flock.create([{ ...common, farmId: farm._id, houseId: house._id, name: `Demo Layer ${suffix}`, nameKey: `demo layer ${suffix.toLowerCase()}`, birdType: 'Layer', placementDate: '2026-11-01', initialCount: 500 }], { session });
       await openingMovement(flock, session);

@@ -1,0 +1,14 @@
+import { z, id, version } from '../../lib/validation.js';
+import { calendarDate, eggKeys } from '../reports/validation.js';
+import { Decimal } from '../../lib/decimal.js';
+const text = z.string().trim().max(500).default('');
+export const money = z.union([z.string().regex(/^\d+(\.\d+)?$/), z.number().finite()]).transform(String).refine((v) => new Decimal(v).gt(0) && new Decimal(v).lte(1e9) && new Decimal(v).decimalPlaces() <= 2, 'Enter a positive PKR amount with at most two decimal places, up to 1,000,000,000.');
+export const saleInput = z.object({ farmId: id, locationId: id, businessDate: calendarDate, buyer: z.string().trim().min(2).max(150), reference: text, paymentStatus: z.enum(['pending', 'paid']).default('pending'), lines: z.array(z.object({ key: z.string().regex(/^[\w-]{1,80}$/), category: z.enum(eggKeys), quantity: z.number().int().positive().max(1e6), unit: z.enum(['egg', 'peti']), unitPrice: money }).strict()).min(1).max(30).refine((r) => new Set(r.map((v) => v.key)).size === r.length, 'Use distinct line keys.') }).strict();
+export const action = z.object({ version }).strict();
+export const reason = action.extend({ reason: z.string().trim().min(3).max(1000) });
+export const payment = action.extend({ paymentStatus: z.enum(['pending', 'paid']) });
+export const expenseInput = z.object({ farmId: id, businessDate: calendarDate, category: z.enum(['feed', 'medicine-vaccine', 'labour', 'electricity', 'other']), amount: money, description: text, reference: text, sourceMovementId: id.nullable().default(null) }).strict().refine((v) => v.category !== 'other' || v.description.length >= 3, { path: ['description'], message: 'Describe the Other expense.' });
+export const replacement = z.object({ version, reason: z.string().trim().min(3).max(1000), expense: expenseInput }).strict();
+export const policyInput = z.object({ version, locationId: id, categories: z.array(z.enum(eggKeys)).min(1).max(7).refine((v) => new Set(v).size === v.length), reason: z.string().trim().min(3).max(1000) }).strict();
+export const backfillInput = z.object({ reason: z.string().trim().min(3).max(1000) }).strict();
+export const query = z.object({ farmId: id.optional(), flockId: id.optional(), from: calendarDate.optional(), to: calendarDate.optional(), status: z.enum(['posted', 'cancelled', 'active', 'voided']).optional(), kind: z.enum(['sales', 'expenses']).default('sales'), page: z.coerce.number().int().min(1).max(10000).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20) }).strict();

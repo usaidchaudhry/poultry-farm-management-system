@@ -1,0 +1,14 @@
+import * as service from './service.js';
+import { parse } from '../../lib/validation.js';
+import { query } from './validation.js';
+export const list = (kind) => async (req, res) => res.json(await service[kind](req.actor, parse(query, req.query)));
+export const policy = async (req, res) => res.json({ data: await service.policy(req.actor, req.params.id) });
+export const stock = async (req, res) => res.json(await service.eggStock(req.actor, req.params.id));
+export const updatePolicy = async (req, res) => res.json({ data: await service.updatePolicy(req.actor, req.params.id, req.input, req.id) });
+export const backfill = async (req, res) => res.json({ data: await service.backfill(req.actor, req.params.id, req.input, req.id) });
+export const sale = async (req, res) => res.json({ data: await service.saleDetail(req.actor, req.params.id) });
+export const createSale = async (req, res) => res.status(201).json({ data: await service.createSale(req.actor, req.input, req.get('Idempotency-Key'), req.id) });
+export const saleAction = (action) => async (req, res) => res.json({ data: await service.saleAction(req.actor, req.params.id, req.input, action, req.id) });
+export const expense = async (req, res) => res.json({ data: await service.expenseDetail(req.actor, req.params.id) });
+export const createExpense = async (req, res) => res.status(201).json({ data: await service.createExpense(req.actor, req.input, req.get('Idempotency-Key'), req.id) });
+export const expenseAction = (action) => async (req, res) => res.json({ data: await service.expenseAction(req.actor, req.params.id, req.input, action, req.get('Idempotency-Key'), req.id) });

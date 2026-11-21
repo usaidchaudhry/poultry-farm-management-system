@@ -2,7 +2,9 @@
 
 ## Project
 - Poultry Management System is a React 18 + Vite frontend using JavaScript modules and plain CSS.
-- The application is now named LayerFlow. Full-stack requirements are in `LayerFlow_MERN_PRD.md`; MERN Phases 0-7 add the Express/Mongoose API in `server/`. The original frontend phase numbers remain historical.
+- The application is now named LayerFlow. Full-stack requirements are in `LayerFlow_MERN_PRD.md`; MERN Phases 0-9 add the Express/Mongoose API in `server/`. The original frontend phase numbers remain historical.
+- Read `docs/MERN_PHASE_9_IMPLEMENTATION.md` for private persistent uploads, parent access/locks, sealed report images, recipient routing, alert lifecycle, and source-deduplicated reminder scans.
+- Read `docs/MERN_PHASE_8_IMPLEMENTATION.md` for frozen egg policy, legacy initialization, report deltas, sale/dispatch/cancellation, expense source claims, and financial aggregation.
 - Read `docs/MERN_PHASE_7_IMPLEMENTATION.md` for formula states, stable rows, decimal costing, price redaction, pending handoffs, and immutable revision snapshots.
 - Read `docs/MERN_PHASE_6_IMPLEMENTATION.md` for canonical units, locations, immutable stock movements, retry keys, historical running balances, report-feed publication, and legacy cutover.
 - Read `docs/MERN_PHASE_0_2_IMPLEMENTATION.md` for adopted defaults, live/mock boundaries, setup, and API contracts before continuing backend work.
@@ -24,7 +26,7 @@
 - Routes are derived from `src/config/modules.js`; built pages are registered in `PAGE_REGISTRY` in `src/app/routes.jsx`.
 - Keep permission identifiers in `src/config/permissions.js` and role grants in `src/config/roles.js`. UI checks permission codes through `useAuth()` or `<Can>`; do not branch on role names in UI components.
 - Keep UI-facing service calls behind facade modules in `src/services/` (for example, `organizationService.js`). Mock implementations belong under `src/services/mock/`.
-- API mode is the default. Hierarchy, staff scope, reports, mortality, population movements, measurements, clinical visits, prescriptions, medication outcomes, inventory, report feed issues, and feed formulas/costing are live; later-phase operational workflows must not read browser mocks for live accounts. Explicit `VITE_DATA_MODE=mock` preserves the historical frontend demo.
+- API mode is the default. Hierarchy, staff scope, reports, mortality, population movements, measurements, clinical visits, prescriptions, medication outcomes, inventory, feed issues/formulas, egg stock, sales, expenses and recorded financial results are live; later-phase workflows must not read browser mocks for live accounts. Explicit `VITE_DATA_MODE=mock` preserves the historical frontend demo.
 - Backend features use routes → middleware/validation → controllers → services/policies → Mongoose models. Identity/access mutations use the transaction guard and audit writer; never authorize using a client actor or role.
 - Organization and active farm context are provided by `src/context/FarmContext.jsx`; use `useFarm()` for farm scope and selection.
 - Shared controls live in `src/components/`. Follow the existing plain CSS and design-token conventions; keep component/page styles beside their implementation where practical.

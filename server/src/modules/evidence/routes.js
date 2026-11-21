@@ -1,0 +1,10 @@
+import express, { Router } from 'express';
+import { parse, z, id, validId, body } from '../../lib/validation.js';
+import * as controller from './controller.js';
+export const evidenceRouter = Router();
+const parent = (req, res, next) => { parse(z.enum(['report', 'clinical-visit', 'expense', 'alert']), req.params.type); parse(id, req.params.parentId); next(); };
+evidenceRouter.get('/files/:id', validId, controller.download);
+evidenceRouter.delete('/files/:id', validId, controller.remove);
+evidenceRouter.get('/:type/:parentId', parent, controller.list);
+evidenceRouter.post('/:type/:parentId/files', parent, express.raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: '5mb' }), controller.upload);
+evidenceRouter.post('/:type/:parentId/comments', parent, body(z.strictObject({ text: z.string().trim().min(1).max(2000) })), controller.comment);

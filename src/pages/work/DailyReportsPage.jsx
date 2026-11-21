@@ -1,3 +1,4 @@
+import { useSourceRecord } from '../../features/notifications/useSourceRecord.js';
 import { useRef, useState } from 'react';
 import Alert from '../../components/common/Alert.jsx';
 import Button from '../../components/common/Button.jsx';
@@ -26,6 +27,7 @@ export default function DailyReportsPage({ mortality = false }) {
     catch (e) { if (request === sequence.current) setDetailError(getErrorMessage(e)); }
     finally { if (request === sequence.current) setLoadingDetail(false); }
   };
+  useSourceRecord(view);
   const closeDetail = () => { sequence.current += 1; setDetail(null); setDetailError(''); setLoadingDetail(false); };
   const columns = [
     { key: 'businessDate', header: 'Business date' }, { key: 'flockId', header: 'Flock', render: (r) => farm.maps.flockById[r.flockId]?.name || 'Flock' }, ...(!mortality ? [{ key: 'status', header: 'Status' }] : []),

@@ -88,6 +88,7 @@ export async function saveItem(caller, id, input, requestId) {
     const item = id ? await itemFor(actor, id, session) : new Item({ organizationId: actor.organizationId });
     if (id) {
       assertVersion(item, input.version);
+      if (item.eggCategory && (input.category !== 'egg' || input.unit !== 'count' || !input.active)) throw new AppError(409, 'EGG_CATALOG_LOCKED', 'System egg-category items must remain active whole-count items.');
       const used = await Movement.exists({ itemId: id }).session(session);
       if (used && (item.unit !== input.unit || item.category !== input.category)) throw new AppError(409, 'CATALOG_LOCKED', 'Unit and category cannot change after stock has been posted.');
       if (!input.active && await Balance.exists({ itemId: id, amount: { $ne: 0 } }).session(session)) throw new AppError(409, 'STOCK_REMAINS', 'Clear all location balances before deactivating the item.');
@@ -102,6 +103,8 @@ export async function saveItem(caller, id, input, requestId) {
     return serialize(item);
   }, { companyOnly: false });
 }
+// Source workflows must call these only while holding accessTransaction.
+export { append as appendStock, locationFor as stockLocation, itemFor as stockItem, dateCheck as stockDate };
 export async function saveLocation(caller, id, input, requestId) {
   return accessTransaction(caller, ['inventory.manage'], async (session, actor) => {
     const row = id ? await locationFor(actor, id, session) : new Location({ ...farmScope(await activeFarm(actor, input.farmId, session)), kind: input.kind });

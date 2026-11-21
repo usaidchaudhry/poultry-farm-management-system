@@ -17,6 +17,9 @@ import { BirdMovement, PublicationIntent } from '../src/modules/reports/models.j
 import { MedicationTask, AdministrationEvent } from '../src/modules/clinical/models.js';
 import { StockLocation, StockBalance, StockMovement, FeedPublication } from '../src/modules/inventory/models.js';
 import { FormulaSnapshot } from '../src/modules/formulas/models.js';
+import { EggPolicy, EggPublication, Sale, Expense } from '../src/modules/commerce/models.js';
+import { Notification, NotificationRecipient } from '../src/modules/notifications/models.js';
+import { runReminders } from '../src/modules/notifications/worker.js';
 
 test('database hierarchy, reports, clinical tasks/outcomes, assignments and authenticated session survive a full MongoDB restart', { timeout: 120000 }, async () => {
   const root = resolve('../.data/verification');
@@ -26,7 +29,7 @@ test('database hierarchy, reports, clinical tasks/outcomes, assignments and auth
   try {
     replica = await createDevelopmentDatabase({ dbPath, port: 0, name: 'layerflow_persistence_test' });
     const port = replica.servers[0].instanceInfo.port;
-    const config = readConfig({ NODE_ENV: 'test', MONGODB_URI: replica.getUri('layerflow_persistence_test'), SESSION_SECRET: randomBytes(48).toString('hex') });
+    const config = readConfig({ NODE_ENV: 'test', MONGODB_URI: replica.getUri('layerflow_persistence_test'), SESSION_SECRET: randomBytes(48).toString('hex'), UPLOAD_DIR: resolve(dbPath, 'private-images') });
     await connectDatabase(config.mongoUri); await applyMigrations(config);
     const initial = randomBytes(24).toString('hex'); const next = randomBytes(24).toString('hex');
     const owner = await bootstrapOwner({ name: 'Persistence Owner', email: 'persistence@layerflow.test', password: initial });
@@ -48,6 +51,14 @@ test('database hierarchy, reports, clinical tasks/outcomes, assignments and auth
     const report = (await write('/daily-reports', { flockId: flock.id, businessDate: businessDate(), data: { eggs: { jumbo: 0, starter: 0, standard: 80, small: 0, floor: 0, broken: 0, discard: 0 }, mortality: 1, feed: { bags: 0, bagSizeKg: 0, additionalKg: 0 }, waterLitres: 0, lightHours: 0, measurementId: measurement.id } }).expect(201)).body.data;
     await write(`/daily-reports/${report.id}/submit`, { version: report.version }).expect(200);
     assert.equal(await FeedPublication.countDocuments({ reportId: report.id }), 1);
+    const collection = await EggPolicy.findOne({ farmId: farm.id });
+    const persistentSale = (await agent.post('/api/v1/sales').set('X-CSRF-Token', changed.body.data.csrfToken).set('Idempotency-Key', randomBytes(20).toString('hex')).send({ farmId: farm.id, locationId: String(collection.locationId), businessDate: businessDate(), buyer: 'Persistent buyer', lines: [{ key: 'persistent-sale-line', category: 'standard', quantity: 10, unit: 'egg', unitPrice: '20' }] }).expect(201)).body.data;
+    const persistentExpense = (await agent.post('/api/v1/expenses').set('X-CSRF-Token', changed.body.data.csrfToken).set('Idempotency-Key', randomBytes(20).toString('hex')).send({ farmId: farm.id, businessDate: businessDate(), category: 'electricity', amount: '50', reference: 'PERSIST-INVOICE' }).expect(201)).body.data;
+    const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1cAAAAASUVORK5CYII=', 'base64');
+    const evidence = (await agent.post(`/api/v1/evidence/expense/${persistentExpense.id}/files?name=invoice.png`).set('X-CSRF-Token', changed.body.data.csrfToken).set('Content-Type', 'image/png').send(image).expect(201)).body.data;
+    const medical = (await write('/notifications', { farmId: farm.id, title: 'Persistent medical alert', message: 'Observed evidence requires review', severity: 'critical' }).expect(201)).body.data;
+    await write(`/notifications/${medical.id}/seen`, {}).expect(200);
+    await write(`/notifications/${medical.id}/acknowledge`, { version: 1, note: 'Review started' }).expect(200);
     const visit = (await write('/clinical-visits', { flockId: flock.id, occurredAt: new Date().toISOString(), diagnosis: 'Persistent recorded clinical assessment' }).expect(201)).body.data;
     const prescription = (await write(`/clinical-visits/${visit.id}/prescriptions`, { items: [{ key: 'persistent-item', medicine: 'Recorded demonstration item', instructions: 'Follow recorded instructions', route: 'water', startDate: businessDate(), durationDays: 3, times: ['00:00'] }] }).expect(201)).body.data;
     await write(`/prescriptions/${prescription.id}/finalize`, { version: 1 }).expect(200);
@@ -69,11 +80,24 @@ test('database hierarchy, reports, clinical tasks/outcomes, assignments and auth
     formula = (await write(`/feed-formulas/${formula.id}/submit`, { version: formula.version }).expect(200)).body.data;
     formula = (await agent.put(`/api/v1/feed-formulas/${formula.id}/pricing`).set('X-CSRF-Token', changed.body.data.csrfToken).send({ version: formula.version, rates: [{ key: 'persist-row', rate: '14' }] }).expect(200)).body.data;
     formula = (await write(`/feed-formulas/${formula.id}/finalize`, { version: formula.version }).expect(200)).body.data;
+    const lowBalance = await StockBalance.findOne({ itemId: item.id, locationId: store._id });
+    await agent.put('/api/v1/inventory/thresholds').set('X-CSRF-Token', changed.body.data.csrfToken).send({ itemId: item.id, locationId: String(store._id), minimum: 101, version: lowBalance.version }).expect(200);
+    await runReminders(config);
+    const persistentReminder = await Notification.findOne({ kind: 'low-stock', sourceId: lowBalance._id });
+    assert.ok(persistentReminder);
     await mongoose.disconnect();
     await replica.stop({ doCleanup: false });
     replica = await createDevelopmentDatabase({ dbPath, port, name: 'layerflow_persistence_test' });
     await connectDatabase(replica.getUri('layerflow_persistence_test'));
     await applyMigrations(config);
+    const persistedImage = await request(createApp(config)).get('/api/v1' + evidence.downloadPath).set('Cookie', cookie).expect(200);
+    assert.deepEqual(persistedImage.body, image);
+    const persistedAlert = (await request(createApp(config)).get(`/api/v1/notifications/${medical.id}`).set('Cookie', cookie).expect(200)).body.data;
+    assert.equal(persistedAlert.status, 'acknowledged'); assert.ok(persistedAlert.inbox.seenAt); assert.ok(persistedAlert.inbox.acknowledgedAt);
+    assert.equal(await NotificationRecipient.countDocuments({ notificationId: medical.id }), 1);
+    await runReminders(config); await runReminders(config);
+    assert.equal(await Notification.countDocuments({ kind: 'low-stock', sourceId: lowBalance._id }), 1);
+    assert.equal((await Notification.findById(persistentReminder._id)).status, 'open');
     const restored = await request(createApp(config)).get('/api/v1/auth/me').set('Cookie', cookie).expect(200);
     assert.equal(restored.body.data.id, owner.id);
     assert.equal(restored.body.data.mustChangePassword, false);
@@ -103,6 +127,11 @@ test('database hierarchy, reports, clinical tasks/outcomes, assignments and auth
     const formulaRestored = (await request(createApp(config)).get(`/api/v1/feed-formulas/${formula.id}`).set('Cookie', cookie).expect(200)).body.data;
     assert.equal(formulaRestored.status, 'finalized'); assert.equal(formulaRestored.costing.totalCost, '1400.00'); assert.equal(formulaRestored.costing.costPerBag, '700.00');
     assert.equal(await FormulaSnapshot.countDocuments({ versionId: formula.id }), 1);
+    assert.equal(await EggPublication.countDocuments({ reportId: report.id }), 1);
+    assert.equal(String((await Sale.findById(persistentSale.id)).total), '200.00');
+    assert.equal(String((await Expense.findById(persistentExpense.id)).amount), '50.00');
+    const financials = (await request(createApp(config)).get('/api/v1/finance').set('Cookie', cookie).expect(200)).body.meta.totals;
+    assert.equal(financials.operatingSurplus, '150.00');
   } finally {
     await mongoose.disconnect();
     if (replica) await replica.stop({ doCleanup: false });

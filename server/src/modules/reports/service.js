@@ -1,5 +1,8 @@
 import { assertReportLinks } from '../clinical/report-links.js';
+import { EvidenceFile } from '../evidence/models.js';
 import { publishFeed } from '../inventory/service.js';
+import { publishEggs } from '../commerce/service.js';
+import { EggPolicy, EggPublication } from '../commerce/models.js';
 import { randomUUID } from 'node:crypto';
 import { DailyReport as R, ReportRevision as V, BirdMovement as B, BirdMeasurement as W, PublicationIntent as I, flockScope } from './models.js';
 import { eggKeys } from './validation.js';
@@ -78,14 +81,18 @@ async function calculate(actor, flock, date, data, session, submitting = false, 
     measurement = { ...serialize(record), previousGrams: priorWeight?.grams ?? null, differenceGrams: priorWeight ? round(record.grams - priorWeight.grams) : null };
   }
   const totalEggs = eggKeys.reduce((n, key) => n + (data.eggs[key] || 0), 0);
-  const saleableEggs = eggKeys.slice(0, 4).reduce((n, key) => n + (data.eggs[key] || 0), 0);
+  const existingReport = await R.findOne({ flockId: flock._id, businessDate: date }).select('_id').session(session);
+  const previousEggs = existingReport ? await EggPublication.findOne({ reportId: existingReport._id }).sort({ revision: -1 }).session(session) : null;
+  const eggPolicy = previousEggs || await EggPolicy.findOne({ farmId: flock.farmId }).session(session);
+  const saleableCategories = eggPolicy?.categories || eggKeys.slice(0, 4);
+  const saleableEggs = saleableCategories.reduce((n, key) => n + (data.eggs[key] || 0), 0);
   const eggSampleAverages = {};
   for (const type of ['single-egg', 'tray']) {
     const samples = data.eggSamples.filter((s) => s.sampleType === type);
     eggSampleAverages[type] = samples.length ? round(samples.reduce((sum, s) => sum.plus(new Decimal(s.value).times(s.unit === 'kg' ? 1000 : 1)), new Decimal(0)).div(samples.length)) : null;
   }
   const ageDays = flock.ageAtPlacementDays == null ? null : flock.ageAtPlacementDays + Math.round((Date.parse(date) - Date.parse(flock.placementDate)) / 86400000);
-  return { ...pop, invalidPopulation, mortalityCount: data.mortality, closingBirds: pop.availableBirds - (data.mortality || 0), totalEggs, saleableEggs, petiEquivalent: round(totalEggs / 360), feedKg, feedPerBirdG: pop.openingBirds ? round(feedKg * 1000 / pop.openingBirds) : null, mortalityPercent: pop.openingBirds ? round((data.mortality || 0) * 100 / pop.openingBirds) : null, productionPercent: pop.openingBirds ? round(totalEggs * 100 / pop.openingBirds) : null, eggSampleAverages, ageDays, ageWeek: ageDays === null ? null : Math.floor(ageDays / 7) + 1, measurement, standard: null, saleabilityPolicy: 'jumbo,starter,standard,small; peti=360', stockPosting: 'deferred-until-phases-6-and-8' };
+  return { ...pop, invalidPopulation, mortalityCount: data.mortality, closingBirds: pop.availableBirds - (data.mortality || 0), totalEggs, saleableEggs, petiEquivalent: round(totalEggs / 360), feedKg, feedPerBirdG: pop.openingBirds ? round(feedKg * 1000 / pop.openingBirds) : null, mortalityPercent: pop.openingBirds ? round((data.mortality || 0) * 100 / pop.openingBirds) : null, productionPercent: pop.openingBirds ? round(totalEggs * 100 / pop.openingBirds) : null, eggSampleAverages, ageDays, ageWeek: ageDays === null ? null : Math.floor(ageDays / 7) + 1, measurement, standard: null, saleabilityPolicy: saleableCategories.join(',') + '; peti=360', stockPosting: 'preview-not-posted' };
 }
 async function queryFilter(actor, query, clinical = false) {
   const zone = await timezone(actor);
@@ -112,7 +119,13 @@ export async function listReports(actor, query, mortalityOnly = false) {
 export async function reportDetail(actor, id) {
   const report = await reportFor(actor, id);
   const flock = await flockFor(actor, report.flockId);
-  return { ...serialize(report), summary: await calculate(actor, flock, report.businessDate, report.data, null, false, false), birdMovements: (await B.find({ reportId: id }).sort({ createdAt: 1 })).map(serialize), revisions: (await V.find({ reportId: id }).sort({ number: -1 })).map(serialize), intents: (await I.find({ reportId: id }).sort({ revision: -1 })).map(serialize) };
+  const summary = await calculate(actor, flock, report.businessDate, report.data, null, false, false);
+  if (report.status === 'submitted') {
+    summary.stockPosting = report.publishedSummary?.stockPosting || 'legacy-unposted';
+    summary.feedPublication = report.publishedSummary?.feedPublication;
+    summary.eggPublication = report.publishedSummary?.eggPublication;
+  }
+  return { ...serialize(report), summary, birdMovements: (await B.find({ reportId: id }).sort({ createdAt: 1 })).map(serialize), revisions: (await V.find({ reportId: id }).sort({ number: -1 })).map(serialize), intents: (await I.find({ reportId: id }).sort({ revision: -1 })).map(serialize) };
 }
 export async function saveReport(caller, id, input, requestId) {
   return accessTransaction(caller, ['daily-reports.manage'], async (session, actor) => {
@@ -153,13 +166,16 @@ export async function transition(caller, id, input, action, requestId) {
       const number = report.publishedRevision + 1;
       const sourceKey = `report:${id}:revision:${number}`;
       const feedPublication = await publishFeed(actor, report, summary.feedKg, number, input.reason, session);
-      summary.stockPosting = 'feed-posted-eggs-deferred-phase-8';
+      summary.eggPublication = await publishEggs(actor, report, number, input.reason, session);
+      summary.saleableEggs = Object.values(summary.eggPublication.counts).reduce((sum, count) => sum + count, 0);
+      summary.stockPosting = 'posted';
       summary.feedPublication = feedPublication;
       await V.create([{ ...flockScope(flock), reportId: id, businessDate: report.businessDate, number, data: report.data, summary, reason: input.reason, submittedBy: actor.id, submittedByName: actor.name, submittedAt: new Date() }], { session });
       const mortalityDelta = report.data.mortality - (prior?.data.mortality || 0);
       if (mortalityDelta) await B.create([{ ...flockScope(flock), reportId: id, revision: number, businessDate: report.businessDate, type: 'mortality', count: -mortalityDelta, reason: input.reason || 'Daily report submission', sourceKey: `${sourceKey}:mortality`, createdBy: actor.id }], { session });
-      await I.create([{ ...flockScope(flock), reportId: id, revision: number, previousRevision: report.publishedRevision, sourceKey: `${sourceKey}:production-feed`, businessDate: report.businessDate, eggDelta: Object.fromEntries(eggKeys.map((key) => [key, report.data.eggs[key] - (prior?.data.eggs[key] || 0)])), feedKgDelta: round(summary.feedKg - (prior?.summary.feedKg || 0)), feedBefore: prior?.data.feed || null, feedAfter: report.data.feed }], { session });
+      await I.create([{ ...flockScope(flock), reportId: id, revision: number, previousRevision: report.publishedRevision, sourceKey: `${sourceKey}:production-feed`, businessDate: report.businessDate, eggDelta: Object.fromEntries(eggKeys.map((key) => [key, report.data.eggs[key] - (prior?.data.eggs[key] || 0)])), feedKgDelta: round(summary.feedKg - (prior?.summary.feedKg || 0)), feedBefore: prior?.data.feed || null, feedAfter: report.data.feed, status: 'posted' }], { session });
       report.summary = summary; report.publishedSummary = summary; report.publishedRevision = number; report.status = 'submitted'; report.returnReason = '';
+      await EvidenceFile.updateMany({ parentType: 'report', parentId: report._id, deletedAt: null, sealedAt: null }, { $set: { sealedAt: new Date() } }, { session });
     }
     report.version += 1; report.updatedBy = actor.id; report.updatedByName = actor.name;
     await report.save({ session });

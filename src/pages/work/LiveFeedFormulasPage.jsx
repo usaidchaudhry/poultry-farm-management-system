@@ -1,3 +1,4 @@
+import { useSourceRecord } from '../../features/notifications/useSourceRecord.js';
 import { useEffect, useRef, useState } from 'react';
 import Button from '../../components/common/Button.jsx';
 import Card from '../../components/common/Card.jsx';
@@ -85,6 +86,7 @@ export default function LiveFeedFormulasPage() {
   const records = useRecords(service.list, { farmId: farmId || undefined, view, status: view === 'history' ? status || undefined : undefined, archived, from: view === 'history' ? from || undefined : undefined, to: view === 'history' ? to || undefined : undefined, page, pageSize: 20 });
   useEffect(() => () => { sequence.current += 1; }, []);
   const open = async (id) => { const request = ++sequence.current; setOpening(true); setError(''); try { const row = await service.detail(id); if (request === sequence.current) setSelected(row); } catch (e) { if (request === sequence.current) { setSelected(null); setError(message(e)); } } finally { if (request === sequence.current) setOpening(false); } };
+  useSourceRecord(open);
   const changed = async (row) => {
     const history = [...(selected?.history || [])].filter((v) => v.id !== row.id);
     if (selected && selected.id !== row.id && !history.some((v) => v.id === selected.id)) history.push({ id: selected.id, number: selected.number, status: selected.status, businessDate: selected.businessDate });

@@ -1,3 +1,4 @@
+import { useSourceRecord } from '../../features/notifications/useSourceRecord.js';
 import { useEffect, useRef, useState } from 'react';
 import Modal from '../../components/common/Modal.jsx';
 import Alert from '../../components/common/Alert.jsx';
@@ -41,6 +42,7 @@ export default function LiveMedicationPage() {
   const [task, setTask] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState(''); const sequence = useRef(0);
   useEffect(() => { const timer = setInterval(records.reload, 30000); return () => clearInterval(timer); }, [records.reload]);
   const open = async (id) => { const request = ++sequence.current; setLoading(true); setError(''); try { const value = await medicationService.detail(id); if (request === sequence.current) setTask(value); } catch (e) { if (request === sequence.current) setError(clinicalError(e)); } finally { if (request === sequence.current) setLoading(false); } };
+  useSourceRecord(open);
   const close = () => { sequence.current += 1; setTask(null); setLoading(false); setError(''); };
   const filter = (setter) => (value) => { setter(value); setPage(1); };
   const states = view === 'open' ? ['scheduled', 'due', 'overdue'] : ['completed', 'missed', 'cancelled'];

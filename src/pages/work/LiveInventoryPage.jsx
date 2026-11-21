@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import Card from '../../components/common/Card.jsx';
 import Button from '../../components/common/Button.jsx';
@@ -68,7 +69,8 @@ function StockForm({ mode, record, items, locations, farms, onClose, onSaved, ca
 }
 export default function LiveInventoryPage() {
   const { hasPermission: can } = useAuth(); const farm = useFarm(); const toast = useToast();
-  const [tab, setTab] = useState('balances'); const [farmId, setFarm] = useState(farm.active.farmId || ''); const [itemId, setItem] = useState(''); const [locationId, setLocation] = useState(''); const [category, setCategory] = useState(''); const [low, setLow] = useState(false); const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [page, setPage] = useState(1);
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState('balances'); const [farmId, setFarm] = useState(params.get('farmId') || farm.active.farmId || ''); const [itemId, setItem] = useState(params.get('itemId') || ''); const [locationId, setLocation] = useState(params.get('locationId') || ''); const [category, setCategory] = useState(''); const [low, setLow] = useState(false); const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [page, setPage] = useState(1);
   const [form, setForm] = useState(null); const [items, setItems] = useState([]); const [locations, setLocations] = useState([]); const [lookupError, setLookupError] = useState(''); const [refresh, setRefresh] = useState(0);
   useEffect(() => { let current = true; setLookupError(''); Promise.all([all('items'), all('locations')]).then(([i, l]) => { if (current) { setItems(i); setLocations(l); } }).catch((e) => { if (current) { setItems([]); setLocations([]); setLookupError(getErrorMessage(e)); } }); return () => { current = false; }; }, [refresh, farm.farms]);
   const query = { farmId: tab === 'items' ? undefined : farmId || undefined, itemId: itemId || undefined, locationId: tab === 'items' ? undefined : locationId || undefined, category: category || undefined, low: tab === 'balances' && low ? 'true' : undefined, from: ['movements'].includes(tab) ? from || undefined : undefined, to: tab === 'movements' ? to || undefined : undefined, page, pageSize: 20 };

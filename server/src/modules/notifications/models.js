@@ -1,0 +1,16 @@
+import mongoose from 'mongoose';
+const { Schema, model } = mongoose;
+const options = { timestamps: true, strict: 'throw', versionKey: false };
+const ref = (name) => ({ type: Schema.Types.ObjectId, ref: name, required: true });
+const notification = new Schema({ organizationId: ref('Organization'), siteId: ref('Site'), farmId: ref('Farm'), kind: { type: String, enum: ['medical', 'low-stock', 'overdue-medication', 'awaiting-costing', 'mortality'] }, title: String, message: String, severity: { type: String, enum: ['info', 'reminder', 'warning', 'critical', 'emergency'] }, status: { type: String, enum: ['open', 'acknowledged', 'resolved'], default: 'open' }, sourceId: Schema.Types.ObjectId, sourcePath: String, businessDate: String, dedupKey: String, activeKey: String, raisedBy: Schema.Types.ObjectId, raisedByName: String, doctorCount: Number, ownerFallback: Boolean, version: { type: Number, default: 1 }, acknowledgedAt: Date, resolvedAt: Date }, options);
+notification.index({ dedupKey: 1 }, { unique: true, partialFilterExpression: { dedupKey: { $type: 'string' } } });
+notification.index({ organizationId: 1, farmId: 1, status: 1 });
+const recipient = new Schema({ notificationId: ref('Notification'), userId: ref('User'), deliveredToInboxAt: { type: Date, default: Date.now }, seenAt: Date, acknowledgedAt: Date }, options);
+recipient.index({ notificationId: 1, userId: 1 }, { unique: true });
+recipient.index({ userId: 1, notificationId: 1 });
+const event = new Schema({ notificationId: ref('Notification'), action: String, note: String, actorId: Schema.Types.ObjectId, actorName: String, clinical: Boolean }, { ...options, timestamps: { createdAt: true, updatedAt: false } });
+event.pre('save', function () { if (!this.isNew) throw new Error('Alert events are append-only.'); });
+export const Notification = model('Notification', notification);
+export const NotificationRecipient = model('NotificationRecipient', recipient);
+export const NotificationEvent = model('NotificationEvent', event);
+export const notificationModels = [Notification, NotificationRecipient, NotificationEvent];

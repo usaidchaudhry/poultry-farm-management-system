@@ -13,7 +13,7 @@ movementSchema.index({ flockId: 1, businessDate: 1 });
 const measurementSchema = new Schema({ ...scope, measuredAt: Date, businessDate: String, sampleSize: Number, averageWeight: Number, unit: { type: String, enum: ['g', 'kg'] }, grams: Number, notes: String, createdBy: ref('User') }, options);
 measurementSchema.index({ flockId: 1, measuredAt: -1 });
 measurementSchema.index({ organizationId: 1, farmId: 1, businessDate: -1 });
-const intentSchema = new Schema({ ...scope, reportId: ref('DailyReport'), revision: Number, previousRevision: Number, sourceKey: { type: String, required: true, unique: true }, businessDate: String, eggDelta: Schema.Types.Mixed, feedKgDelta: Number, feedBefore: Schema.Types.Mixed, feedAfter: Schema.Types.Mixed, status: { type: String, enum: ['deferred'], default: 'deferred' } }, options);
+const intentSchema = new Schema({ ...scope, reportId: ref('DailyReport'), revision: Number, previousRevision: Number, sourceKey: { type: String, required: true, unique: true }, businessDate: String, eggDelta: Schema.Types.Mixed, feedKgDelta: Number, feedBefore: Schema.Types.Mixed, feedAfter: Schema.Types.Mixed, status: { type: String, enum: ['deferred', 'posted'], default: 'deferred' } }, options);
 // Evidence collections have no update/delete routes. Protect document saves too;
 // this is application-level immutability, not a claim against DB administrators.
 for (const schema of [revisionSchema, movementSchema, intentSchema, measurementSchema]) schema.pre('save', function () { if (!this.isNew) throw new Error('Evidence is append-only.'); });

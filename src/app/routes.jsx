@@ -4,6 +4,10 @@ import ClinicalVisitsPage from '../pages/work/ClinicalVisitsPage.jsx';
 import LiveMedicationPage from '../pages/work/LiveMedicationPage.jsx';
 import LiveInventoryPage from '../pages/work/LiveInventoryPage.jsx';
 import LiveFeedFormulasPage from '../pages/work/LiveFeedFormulasPage.jsx';
+import LiveEggProductionPage from '../pages/work/LiveEggProductionPage.jsx';
+import LiveSalesPage from '../pages/work/LiveSalesPage.jsx';
+import LiveFinancePage from '../pages/work/LiveFinancePage.jsx';
+import LiveNotificationsPage from '../pages/work/LiveNotificationsPage.jsx';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { ALL_PAGES } from '../config/modules.js';
 import AuthLayout from '../layouts/AuthLayout.jsx';
@@ -59,10 +63,10 @@ const PAGE_REGISTRY = {
   'bird-parameters': () => config.isMock ? <WorkPage kind="measurements" permission={PERMISSIONS.BIRD_PARAMETERS_MANAGE} /> : <BirdMeasurementsPage />,
   inventory: config.isMock ? InventoryPage : LiveInventoryPage,
   'feed-formulas': config.isMock ? FeedFormulasPage : LiveFeedFormulasPage,
-  'egg-production': () => <WorkPage kind="eggProduction" permission={PERMISSIONS.EGG_PRODUCTION_MANAGE} />,
-  sales: SalesPage,
-  finance: FinancePage,
-  notifications: NotificationsPage,
+  'egg-production': () => config.isMock ? <WorkPage kind="eggProduction" permission={PERMISSIONS.EGG_PRODUCTION_MANAGE} /> : <LiveEggProductionPage />,
+  sales: config.isMock ? SalesPage : LiveSalesPage,
+  finance: config.isMock ? FinancePage : LiveFinancePage,
+  notifications: config.isMock ? NotificationsPage : LiveNotificationsPage,
   analytics: AnalyticsPage,
   audit: AuditPage,
   profile: ProfilePage,

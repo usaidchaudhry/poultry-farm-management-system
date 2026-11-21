@@ -1,6 +1,6 @@
 # LayerFlow
 
-A poultry-management Web Programming university course project using React, Express, Node.js, and MongoDB. **MERN Phases 0-7 are implemented:** backend foundation, real authentication, staff administration, editable role permissions, persistent farm hierarchy, scoped staff assignments, daily reports and revisions, mortality, population tracking, bird measurements, clinical prescriptions, independent medication administration, per-location inventory with report-linked feed issues, and versioned feed formula costing. Egg publication, sales, and other later modules remain integration-pending in API mode; the historical demo is available through explicit mock mode.
+A poultry-management Web Programming university course project using React, Express, Node.js, and MongoDB. **MERN Phases 0-9 are implemented:** backend foundation, authentication and administration, farm hierarchy/scope, daily reports/revisions, mortality/population/measurements, clinical prescriptions and independent medication outcomes, location inventory/report feed issues, versioned formula costing, report-derived egg stock, sales, expenses, recorded financial results, private evidence, medical alerts, and durable in-app reminders. Dashboard/report exports and audit viewing remain integration-pending in API mode; explicit mock mode retains the historical demo.
 
 - [Product requirements and phased plan](LayerFlow_MERN_PRD.md)
 - [Implementation log, decisions, data dictionary, API contract, and verification](docs/MERN_PHASE_0_2_IMPLEMENTATION.md)
@@ -9,6 +9,8 @@ A poultry-management Web Programming university course project using React, Expr
 - [Phase 5 clinical workflow, scheduling, evidence, and verification](docs/MERN_PHASE_5_IMPLEMENTATION.md)
 - [Phase 6 inventory, stock controls, report-feed posting, and verification](docs/MERN_PHASE_6_IMPLEMENTATION.md)
 - [Phase 7 formula composition, costing, privacy, and immutable versions](docs/MERN_PHASE_7_IMPLEMENTATION.md)
+- [Phase 8 egg publication, sales, expenses, and recorded financial results](docs/MERN_PHASE_8_IMPLEMENTATION.md)
+- [Phase 9 private evidence, alert lifecycle, durable reminders, and storage deployment](docs/MERN_PHASE_9_IMPLEMENTATION.md)
 - [Exact default role/permission matrix](docs/ACCESS_MATRIX.md)
 - [Progress checklist](PROGRESS.md)
 
@@ -100,7 +102,9 @@ Open **Organization** to create Sites > Farms > Houses > Flocks. One active floc
 
 Staff reads are limited to today/yesterday unless their role grants history. Older report writes additionally need correction permission and a reason. Farm scope is checked on lists, details, revisions, and writes.
 
-**Phase 6 publication:** submitting a positive feed quantity requires real item/location selections and deducts stock atomically. Returned drafts retain their last effective consumption; revisions post differences or refund/reissue changed sources. Insufficient current or historical stock blocks submission. Egg stock publication remains Phase 8. Legacy descriptive reports are preserved; their first stock-enabled revision posts its full selected consumption. See the Phase 6 log for the cutover contract.
+**Phase 8 publication:** report submission posts feed consumption and saleable egg stock in one transaction. Returned drafts retain their last effective publication; revisions post differences. Insufficient current or historical stock blocks the whole submission. Legacy descriptive feed references require real selections; legacy egg reports need an explicitly checked stock initialization or their first stock-enabled revision. See the Phase 6/8 logs for cutover contracts.
+
+**Phase 9 evidence and alerts:** open a saved report, visit, expense, or medical alert to attach private images/comments. Medical alerts reach assigned clinicians and authorized management, with explicit Owner fallback. Run the normal API entry point to start restart-safe reminder scanning. Keep `UPLOAD_DIR` on persistent private disk and back it up with MongoDB; it is never a public static directory. See [Phase 9 deployment and API details](docs/MERN_PHASE_9_IMPLEMENTATION.md).
 
 ## Clinical visits and medication
 
@@ -120,7 +124,7 @@ Clinical history permissions remain separate from ordinary operational date acce
 4. Configure a low-stock threshold per item/location, including zero pairs before their first receipt. Inspect low stock and reconciliation; discrepancies block further posting for that pair.
 5. Reverse manual errors using a linked compensating operation. Correct report-generated consumption by returning/editing/resubmitting the report. Farm Managers consume feed only through reports and cannot manually duplicate consumption.
 
-No stock quantities are seeded automatically. Record real opening stock before submitting positive feed consumption. Low-stock alerts are displayed here; durable notifications remain Phase 9.
+No stock quantities are seeded automatically. Record real opening stock before submitting positive feed consumption. Configured low-stock conditions also create durable Phase 9 inbox reminders.
 
 ## Feed formulas and costing
 
@@ -130,6 +134,16 @@ No stock quantities are seeded automatically. Record real opening stock before s
 4. Farm Managers receive no price fields, including in old versions. Cost visibility, price entry, finalization, submission, and return have separate permissions. Formulas do not consume stock or book expenses.
 
 The worked 60 kg at PKR 10/kg plus 40 kg at PKR 20/kg example yields PKR 1,400 total and PKR 700 per 50 kg bag. See the Phase 7 log for decimal rounding, history policies, API contracts, and verification.
+
+## Egg production, sales, and recorded finance
+
+1. Submit reports to publish saleable egg categories to the farm's collection room. Egg production reads that evidence; it has no independent production entry form. Defaults exclude Floor/Broken/Discard.
+2. On Sales, select a permitted room, buyer, and category lines priced per egg or whole Peti (360 eggs). Posting deducts stock atomically and cannot oversell. Payment changes affect unpaid value, not revenue or quantity.
+3. Cancel with a reason before physical dispatch to restore stock and remove recorded revenue, or mark eggs physically dispatched. Dispatched customer returns are outside this phase.
+4. On Finance, record actual expenses with controlled categories and unique invoice/source references. Correct errors through void-and-replacement rather than overwriting evidence.
+5. Review sales-date revenue, unpaid value, recorded cost, and operating surplus with source drill-down. Cost completeness remains unconfirmed; these results are not cash flow, official profit, or ROI. Formula costing and stock movements do not automatically book costs.
+
+The example of 720 eggs, a one-Peti sale at PKR 18,000, and PKR 7,000 expenses leaves 360 eggs and PKR 11,000 recorded operating surplus. Historical report eggs are not silently backfilled: a company supervisor checks physical opening stock before explicitly initializing legacy evidence.
 
 ## Commands
 
@@ -175,7 +189,9 @@ Server configuration belongs in `server/.env`:
 | `COOKIE_SECURE`, `COOKIE_SAME_SITE` | Cookie topology; production requires secure cookies/HTTPS |
 | `TRUST_PROXY` | Trusted reverse-proxy hop count; default 0 |
 | `BUSINESS_TIMEZONE` | Default `Asia/Karachi` |
-| `UPLOAD_DIR` | Reserved private upload location for later evidence module |
+| `UPLOAD_DIR` | Private persistent disk for authenticated images; default `../.data/uploads`; never expose as a static directory |
+| `REMINDER_INTERVAL_MS` | Restart-safe reminder scan interval; default 60000 |
+| `MORTALITY_ALERT_PERCENT` | Demonstration alert threshold; default 2%, not veterinary advice |
 | `BOOTSTRAP_NAME`, `BOOTSTRAP_EMAIL`, `BOOTSTRAP_PASSWORD` | One-time initial account input |
 
 Use **localhost** consistently with the default frontend-origin setting. If opening another hostname/port, update the allowed origin accordingly. Do not put secrets in `VITE_*` variables. For a later deployed environment, serve the SPA and `/api/v1` through one HTTPS origin and configure the trusted proxy explicitly.
