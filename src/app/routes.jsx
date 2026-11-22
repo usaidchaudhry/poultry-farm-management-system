@@ -8,6 +8,8 @@ import LiveEggProductionPage from '../pages/work/LiveEggProductionPage.jsx';
 import LiveSalesPage from '../pages/work/LiveSalesPage.jsx';
 import LiveFinancePage from '../pages/work/LiveFinancePage.jsx';
 import LiveNotificationsPage from '../pages/work/LiveNotificationsPage.jsx';
+import LiveAnalyticsPage from '../pages/work/LiveAnalyticsPage.jsx';
+import LiveAuditPage from '../pages/work/LiveAuditPage.jsx';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { ALL_PAGES } from '../config/modules.js';
 import AuthLayout from '../layouts/AuthLayout.jsx';
@@ -67,8 +69,8 @@ const PAGE_REGISTRY = {
   sales: config.isMock ? SalesPage : LiveSalesPage,
   finance: config.isMock ? FinancePage : LiveFinancePage,
   notifications: config.isMock ? NotificationsPage : LiveNotificationsPage,
-  analytics: AnalyticsPage,
-  audit: AuditPage,
+  analytics: config.isMock ? AnalyticsPage : LiveAnalyticsPage,
+  audit: config.isMock ? AuditPage : LiveAuditPage,
   profile: ProfilePage,
 };
 

@@ -17,7 +17,13 @@
     "test:server": "npm --prefix server test",
     "test:browser": "npm --prefix server run test:browser",
     "docs:access": "npm --prefix server run docs:access",
-    "db:demo": "npm --prefix server run demo:hierarchy"
+    "docs:api": "npm --prefix server run docs:api",
+    "db:demo": "npm --prefix server run demo:hierarchy",
+    "db:demo:full": "npm --prefix server run demo:full",
+    "db:backup": "npm --prefix server run backup -- create",
+    "db:restore": "npm --prefix server run backup -- restore",
+    "test:release": "npm --prefix server run test:release",
+    "test:demo-login": "npm --prefix server run test:demo-login"
   },
   "dependencies": {
     "axios": "^1.7.9",

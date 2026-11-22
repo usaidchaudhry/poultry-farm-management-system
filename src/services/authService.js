@@ -3,6 +3,7 @@ import { config } from '../utils/config.js';
 async function mock() { return (await import('./mock/mockAuthService.js')).mockAuthService; }
 
 export const authService = {
+  async demoAccounts() { return (await api.get('/auth/demo-accounts')).data.data; },
   async login(credentials) {
     if (config.isMock) return (await mock()).login(credentials);
     const { data } = await api.post('/auth/login', credentials);

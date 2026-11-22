@@ -2,7 +2,9 @@
 
 ## Project
 - Poultry Management System is a React 18 + Vite frontend using JavaScript modules and plain CSS.
-- The application is now named LayerFlow. Full-stack requirements are in `LayerFlow_MERN_PRD.md`; MERN Phases 0-9 add the Express/Mongoose API in `server/`. The original frontend phase numbers remain historical.
+- The application is now named LayerFlow. Full-stack requirements are in `LayerFlow_MERN_PRD.md`; MERN Phases 0-10 implement the Express/Mongoose API in `server/`. The original frontend phase numbers remain historical.
+- Read `docs/MERN_PHASE_10_IMPLEMENTATION.md` for published-source aggregation, source permissions, date/scope filters, CSV/print and read-only redacted audit.
+- Read `docs/MERN_PHASE_11_IMPLEMENTATION.md`, `docs/ACCEPTANCE_RESULTS.md` and `docs/BACKUP_RESTORE.md` for localhost delivery, relative-date demo, recovery and verification. The user approved localhost only: skip public deployment and features requiring external services, third-party APIs or cloud. `docs/DEPLOYMENT.md` is optional reference; the local Express API/MongoDB remain required.
 - Read `docs/MERN_PHASE_9_IMPLEMENTATION.md` for private persistent uploads, parent access/locks, sealed report images, recipient routing, alert lifecycle, and source-deduplicated reminder scans.
 - Read `docs/MERN_PHASE_8_IMPLEMENTATION.md` for frozen egg policy, legacy initialization, report deltas, sale/dispatch/cancellation, expense source claims, and financial aggregation.
 - Read `docs/MERN_PHASE_7_IMPLEMENTATION.md` for formula states, stable rows, decimal costing, price redaction, pending handoffs, and immutable revision snapshots.
@@ -21,6 +23,9 @@
 - `npm test` runs the Node service workflow checks.
 - `npm run dev:server` starts the API; `npm run db:dev` starts a persistent local MongoDB replica set.
 - `npm run test:server` runs actual API/database checks; `npm run test:browser` verifies the implemented administration workflow in headless Edge.
+- `npm run test:release` verifies the production API/SPA through local HTTPS with all roles and paired backup recovery; it does not publish a public deployment.
+- `npm run db:demo:full` adds a relative-date local sample scenario. `npm run docs:api` regenerates the route/validator-based OpenAPI specification.
+- The localhost demo picker uses `LOCAL_DEMO_LOGIN=true` with `DEMO_PASSWORD` and the full seed (including a separate demo Owner). It fills normal login credentials without bypassing password change or permissions; changed credentials are preserved. `npm run test:demo-login` verifies all six accounts/five roles. The helper must remain non-production and loopback-only.
 
 ## Architecture
 - Routes are derived from `src/config/modules.js`; built pages are registered in `PAGE_REGISTRY` in `src/app/routes.jsx`.

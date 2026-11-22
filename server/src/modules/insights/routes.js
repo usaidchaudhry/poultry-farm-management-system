@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import { permission } from '../../middleware/auth.js';
+import * as c from './controller.js';
+export const insightRouter = Router();
+insightRouter.use(permission('reports.view'));
+insightRouter.get('/catalog', c.catalog);
+insightRouter.get('/:type/export', permission('reports.export'), c.exportReport);
+insightRouter.get('/:type', c.report);
+export const dashboardRouter = Router();
+dashboardRouter.get('/', permission('dashboard.view'), c.dashboard);

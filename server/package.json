@@ -16,7 +16,12 @@
     "test": "node --test --test-concurrency=1 tests/*.test.js",
     "test:browser": "node scripts/browser-smoke.js",
     "docs:access": "node scripts/document-access.js",
-    "demo:hierarchy": "node --env-file-if-exists=.env src/scripts/demo-hierarchy.js"
+    "docs:api": "node scripts/document-api.js",
+    "demo:hierarchy": "node --env-file-if-exists=.env src/scripts/demo-hierarchy.js",
+    "demo:full": "node --env-file-if-exists=.env src/scripts/demo-scenario.js",
+    "backup": "node --env-file-if-exists=.env src/scripts/backup.js",
+    "test:release": "node scripts/release-smoke.js",
+    "test:demo-login": "node scripts/demo-login-smoke.js"
   },
   "dependencies": {
     "connect-mongo": "^6.0.0",

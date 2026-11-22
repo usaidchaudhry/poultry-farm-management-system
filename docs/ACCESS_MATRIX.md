@@ -69,6 +69,8 @@ User and role APIs are organization-wide administration: they additionally requi
 
 Only the protected recovery role can administer protected accounts or assign that role. It cannot be edited through the API. Other grants must be a subset of the acting administrator’s current permissions. Concurrent identity/access changes serialize on the access-control guard and recheck the actor inside the transaction.
 
-Historical operational reads require `reports.history.view`; Doctors have the separate `clinical.history.view` exception. These are policy foundations until the relevant business endpoints are implemented. Site/farm assignment and hierarchy persistence are MERN Phase 3.
+Historical operational reads require `reports.history.view`; Doctors have the separate `clinical.history.view` exception for clinical records and measurements. Implemented list/detail/chart/export routes enforce scope and business-date windows. Current stock, open work and unresolved alerts have the documented limited current-state exceptions.
 
-The legacy mock permission `notifications.manage` is retained only for compatibility with the original frontend demo. Live notification actions will use their explicit permissions.
+Audit viewing additionally requires company scope. Reports/export permissions do not substitute for the underlying source permission; formula prices require `feed-formulas.cost-view`. Audit details are redacted and require source read permission.
+
+The legacy mock permission `notifications.manage` is retained only for compatibility with the original frontend demo. Live notification actions use their explicit permissions.

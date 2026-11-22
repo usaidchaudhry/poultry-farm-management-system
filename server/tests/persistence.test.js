@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import request from 'supertest';
 import { createDevelopmentDatabase } from '../scripts/database-helper.js';
@@ -20,6 +20,7 @@ import { FormulaSnapshot } from '../src/modules/formulas/models.js';
 import { EggPolicy, EggPublication, Sale, Expense } from '../src/modules/commerce/models.js';
 import { Notification, NotificationRecipient } from '../src/modules/notifications/models.js';
 import { runReminders } from '../src/modules/notifications/worker.js';
+import { backupApplication, restoreApplication } from '../src/scripts/backup-service.js';
 
 test('database hierarchy, reports, clinical tasks/outcomes, assignments and authenticated session survive a full MongoDB restart', { timeout: 120000 }, async () => {
   const root = resolve('../.data/verification');
@@ -132,6 +133,23 @@ test('database hierarchy, reports, clinical tasks/outcomes, assignments and auth
     assert.equal(String((await Expense.findById(persistentExpense.id)).amount), '50.00');
     const financials = (await request(createApp(config)).get('/api/v1/finance').set('Cookie', cookie).expect(200)).body.meta.totals;
     assert.equal(financials.operatingSurplus, '150.00');
+    const bundle = resolve(dbPath, 'verified-backup');
+    const backedUp = await backupApplication(config, bundle); assert.equal(backedUp.files, 1);
+    const payloadPath = resolve(bundle, 'database.ejson'); const originalPayload = await readFile(payloadPath);
+    await writeFile(payloadPath, Buffer.concat([originalPayload, Buffer.from('tampered')]));
+    await assert.rejects(restoreApplication(bundle, replica.getUri('refused_corrupt'), resolve(dbPath, 'refused-corrupt-images')), /checksum/);
+    await writeFile(payloadPath, originalPayload);
+    const restoredUri = replica.getUri('layerflow_restored'); const restoredUploads = resolve(dbPath, 'restored-images');
+    const recovery = await restoreApplication(bundle, restoredUri, restoredUploads); assert.equal(recovery.files, 1); assert.equal(recovery.sessionsRestored, false);
+    await assert.rejects(restoreApplication(bundle, restoredUri, resolve(dbPath, 'refused-overwrite')), /empty target/);
+    await mongoose.disconnect(); await connectDatabase(restoredUri); await applyMigrations({ ...config, mongoUri: restoredUri, uploadDir: restoredUploads });
+    const restoredApp = createApp({ ...config, mongoUri: restoredUri, uploadDir: restoredUploads });
+    await request(restoredApp).get('/api/v1/auth/me').set('Cookie', cookie).expect(401);
+    const recovered = request.agent(restoredApp); const recoveredCsrf = (await recovered.get('/api/v1/auth/csrf').expect(200)).body.data.csrfToken;
+    await recovered.post('/api/v1/auth/login').set('X-CSRF-Token', recoveredCsrf).send({ email: owner.email, password: next }).expect(200);
+    const restoredImage = await recovered.get('/api/v1' + evidence.downloadPath).expect(200); assert.deepEqual(restoredImage.body, image);
+    assert.equal((await recovered.get('/api/v1/finance').expect(200)).body.meta.totals.operatingSurplus, '150.00');
+    assert.equal((await recovered.get('/api/v1/notifications/' + medical.id).expect(200)).body.data.status, 'acknowledged');
   } finally {
     await mongoose.disconnect();
     if (replica) await replica.stop({ doCleanup: false });

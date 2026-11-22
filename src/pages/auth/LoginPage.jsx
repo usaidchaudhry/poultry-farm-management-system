@@ -10,6 +10,7 @@ import { getErrorMessage } from '../../services/apiError.js';
 import { email as emailRule, required } from '../../utils/validators.js';
 import { config } from '../../utils/config.js';
 const DemoAccounts = lazy(() => import('./DemoAccounts.jsx'));
+const LiveDemoAccounts = lazy(() => import('./LiveDemoAccounts.jsx'));
 import './LoginPage.css';
 
 export default function LoginPage() {
@@ -90,14 +91,14 @@ export default function LoginPage() {
         </Button>
       </form>
 
-      {config.isMock && <Suspense fallback={null}><DemoAccounts
+      <Suspense fallback={null}>{config.isMock ? <DemoAccounts
         disabled={submitting}
         onPick={(account) => {
           setValues({ email: account.email, password: account.password });
           setErrors({});
           setFormError('');
         }}
-      /></Suspense>}
+      /> : <LiveDemoAccounts disabled={submitting} onPick={(account) => { setValues({ email: account.email, password: account.password }); setErrors({}); setFormError(''); }} />}</Suspense>
     </div>
   );
 }

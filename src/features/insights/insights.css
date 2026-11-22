@@ -1,0 +1,13 @@
+.insights__metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: var(--space-4); }
+.insights__trend { margin: 0; padding-top: var(--space-3); }
+.insights__trend figcaption { font-weight: 600; }
+.insights__trend svg { display: block; width: 100%; max-height: 230px; overflow: visible; }
+.insights__trend text { font: 12px system-ui, sans-serif; fill: var(--color-text-muted); }
+.insights__baseline { stroke: var(--color-border); stroke-width: 1; }
+.insights__line { stroke: var(--color-primary); stroke-width: 2.5; fill: none; }
+.insights__point { fill: var(--color-primary); }
+.insights__summary { display: flex; flex-wrap: wrap; gap: var(--space-4); margin: 0; }
+.insights__summary div { border-left: 3px solid var(--color-primary); padding-left: var(--space-3); }
+.insights__summary dt { color: var(--color-text-muted); font-size: var(--text-sm); }
+.insights__summary dd { margin: 0; font-size: var(--text-lg); font-weight: 600; overflow-wrap: anywhere; }
+.insights__json { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-sm); max-width: 100%; }

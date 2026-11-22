@@ -10,6 +10,8 @@ import { commerceModels } from '../modules/commerce/models.js';
 import { setupEggFarm } from '../modules/commerce/setup.js';
 import { evidenceModels } from '../modules/evidence/models.js';
 import { notificationModels } from '../modules/notifications/models.js';
+import { AuditEvent } from '../modules/access/models.js';
+import { auditContext } from '../modules/access/audit-context.js';
 
 export async function applyMigrations(config) {
   for (const model of [...models, ...Object.values(hierarchyModels), ...reportModels, ...clinicalModels, ...inventoryModels, ...formulaModels, ...commerceModels, ...evidenceModels, ...notificationModels]) {
@@ -48,5 +50,15 @@ export async function applyMigrations(config) {
     await Migration.create([{ _id: '007-eggs-sales-finance', appliedAt: new Date() }], { session });
   });
   await Migration.updateOne({ _id: '008-evidence-alerts-reminders' }, { $setOnInsert: { appliedAt: new Date() } }, { upsert: true });
+  await transaction(async (session) => {
+    await SecurityGuard.updateOne({ _id: 'access-control' }, { $inc: { revision: 1 } }, { session });
+    if (await Migration.exists({ _id: '009-reporting-audit-context' }).session(session)) return;
+    for (const row of await AuditEvent.find({ farmId: null }).session(session)) {
+      const context = await auditContext(row.targetType, row.targetId, session);
+      if (row.changes?.event?.businessDate) context.businessDate = row.changes.event.businessDate;
+      if (Object.keys(context).length) await AuditEvent.updateOne({ _id: row._id }, { $set: context }, { session });
+    }
+    await Migration.create([{ _id: '009-reporting-audit-context', appliedAt: new Date() }], { session });
+  });
   return mongoose.connection;
 }

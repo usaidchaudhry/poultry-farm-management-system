@@ -6,8 +6,14 @@ import { formulaRouter } from './modules/formulas/routes.js';
 import { productionRouter, salesRouter, expensesRouter, financeRouter } from './modules/commerce/routes.js';
 import { evidenceRouter } from './modules/evidence/routes.js';
 import { notificationRouter } from './modules/notifications/routes.js';
+import { insightRouter, dashboardRouter } from './modules/insights/routes.js';
+import { auditRouter } from './modules/audit/routes.js';
+import { print as printDailyReport } from './modules/insights/controller.js';
+import { validId } from './lib/validation.js';
 import { permission } from './middleware/auth.js';
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { join, extname } from 'node:path';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -59,6 +65,7 @@ export function createApp(config) {
   app.get('/api/v1/permissions', companyScope, anyPermission(P.ROLES_VIEW, P.ROLES_MANAGE), (req, res) => res.json({ data: ALL_PERMISSIONS.filter((code) => code !== P.NOTIFICATIONS_MANAGE) }));
   app.put('/api/v1/users/:id/scope', companyScope, permission(P.USERS_MANAGE, P.ORGANIZATION_MANAGE), assignScope);
   app.use('/api/v1/organization', organizationRouter);
+  app.get('/api/v1/daily-reports/:id/print', permission('daily-reports.view', 'reports.export'), validId, printDailyReport);
   app.use('/api/v1/daily-reports', reportRouter);
   app.get('/api/v1/mortality', permission('mortality.view'), reportController.mortality);
   app.use('/api/v1/flocks', populationRouter);
@@ -74,6 +81,17 @@ export function createApp(config) {
   app.use('/api/v1/finance', financeRouter);
   app.use('/api/v1/evidence', evidenceRouter);
   app.use('/api/v1/notifications', notificationRouter);
+  app.use('/api/v1/dashboard', dashboardRouter);
+  app.use('/api/v1/reports', insightRouter);
+  app.use('/api/v1/audit-events', auditRouter);
+  // API mistakes must stay JSON errors, never a successful SPA fallback.
+  app.use('/api', (req, res, next) => next(new AppError(404, 'NOT_FOUND', 'Endpoint not found.')));
+  if (config.serveSpa) {
+    const index = join(config.spaDir, 'index.html');
+    if (!existsSync(index)) throw new Error('SPA build is missing. Run npm run build before starting production.');
+    app.use(express.static(config.spaDir, { index: false, dotfiles: 'deny' }));
+    app.get(/.*/, (req, res, next) => { if (extname(req.path) || !req.accepts('html')) return next(); res.sendFile('index.html', { root: config.spaDir, dotfiles: 'deny' }); });
+  }
   app.use((req, res, next) => next(new AppError(404, 'NOT_FOUND', 'Endpoint not found.')));
   app.use(errorHandler);
   return app;

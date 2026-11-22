@@ -2,6 +2,8 @@
 
 ## Product requirements document and phased MERN implementation plan
 
+**Scope amendment - 22 November 2026:** The user approved localhost-only delivery: no public deployment; skip features requiring external services, third-party APIs or cloud. Use the local Express API, local MongoDB replica set and private local file storage. Public hosting, hosted database/storage and external messaging are excluded. This amendment supersedes deployment requirements in Phase 11, AC-26 and Section 14; their local installation, production-build verification, restart, backup/restore and documentation requirements remain applicable. Phases 10 and 11 are complete within this revised scope; see the implementation logs and acceptance results.
+
 | Item | Definition |
 | --- | --- |
 | Version | 1.0 |

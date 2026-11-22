@@ -10,7 +10,7 @@ try {
   await applyMigrations(config);
   const app = createApp(config);
   const stopWorker = startReminderWorker(config);
-  const server = app.listen(config.port, '127.0.0.1', () => console.log(`LayerFlow API listening on http://localhost:${config.port}/api/v1`));
+  const server = app.listen(config.port, config.host, () => console.log(`LayerFlow API listening on port ${config.port}`));
   let stopping = false;
   const stop = () => {
     if (stopping) return;

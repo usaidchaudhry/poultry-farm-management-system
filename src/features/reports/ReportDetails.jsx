@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { config } from '../../utils/config.js';
 import Modal from '../../components/common/Modal.jsx';
 import Alert from '../../components/common/Alert.jsx';
 import Button from '../../components/common/Button.jsx';
@@ -30,6 +31,7 @@ export default function ReportDetails({ record, onClose, onEdit, onChanged }) {
     <p>Recorded by {record.createdByName || record.createdBy} · Updated by {record.updatedByName || record.updatedBy}</p>
     <Alert tone="info">{(snapshot?.summary || record.publishedSummary)?.feedPublication ? 'Published feed consumption has been posted to inventory. Draft edits do not change stock until resubmission.' : 'This report has no stock-enabled feed publication yet. A new submission posts its full selected consumption.'} {(snapshot?.summary || record.publishedSummary)?.eggPublication ? 'Saleable egg production is posted to the collection room.' : 'Legacy egg production requires explicit stock initialization on the Egg production page.'}</Alert>
     {record.returnReason && <Alert tone="warning">Returned: {record.returnReason}. The previous published revision remains effective.</Alert>}
+    {hasPermission('reports.export') && record.publishedRevision > 0 && <a href={`${config.apiBaseUrl}/daily-reports/${record.id}/print${snapshot ? `?revision=${snapshot.number}` : ''}`} target="_blank" rel="noreferrer">Print published daily report</a>}
     {!snapshot && record.status !== 'submitted' && <p className="text-muted">Draft totals are previews. Missing inputs still require explicit values before submission.</p>}
     <div className="reports__actions"><Button variant={snapshot ? 'secondary' : 'primary'} onClick={() => setSnapshot(null)}>Current report</Button>{record.revisions.map((r) => <Button key={r.id} variant={snapshot?.id === r.id ? 'primary' : 'secondary'} onClick={() => setSnapshot(r)}>Revision {r.number}</Button>)}</div>
     {snapshot && <p>Submitted {new Date(snapshot.submittedAt).toLocaleString()} · Reason: {snapshot.reason || 'Initial submission'} · Actor: {snapshot.submittedByName || snapshot.submittedBy}</p>}

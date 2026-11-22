@@ -1,0 +1,67 @@
+{
+  "generatedAt": "2026-11-22T11:35:56.288Z",
+  "node": "v24.18.0",
+  "cpu": "AMD Ryzen 9 4900HS with Radeon Graphics         ",
+  "dataset": {
+    "farms": 5,
+    "flocks": 20,
+    "initialDatedRecords": 10000
+  },
+  "timing": {
+    "paginatedRead": {
+      "requests": 20,
+      "p95Ms": 153,
+      "targetMs": 2000
+    },
+    "write": {
+      "requests": 20,
+      "p95Ms": 41,
+      "targetMs": 2000
+    },
+    "report": {
+      "requests": 20,
+      "p95Ms": 117,
+      "targetMs": 3000
+    },
+    "dashboard": {
+      "requests": 20,
+      "p95Ms": 131,
+      "targetMs": 3000
+    }
+  },
+  "winningPlan": {
+    "isCached": false,
+    "stage": "FETCH",
+    "inputStage": {
+      "stage": "IXSCAN",
+      "keyPattern": {
+        "organizationId": 1,
+        "farmId": 1,
+        "businessDate": -1
+      },
+      "indexName": "organizationId_1_farmId_1_businessDate_-1",
+      "isMultiKey": false,
+      "multiKeyPaths": {
+        "organizationId": [],
+        "farmId": [],
+        "businessDate": []
+      },
+      "isUnique": false,
+      "isSparse": false,
+      "isPartial": false,
+      "indexVersion": 2,
+      "direction": "forward",
+      "indexBounds": {
+        "organizationId": [
+          "[ObjectId('6b02d3918365b5228c33cc41'), ObjectId('6b02d3918365b5228c33cc41')]"
+        ],
+        "farmId": [
+          "[ObjectId('6b02d3918365b5228c33cc4a'), ObjectId('6b02d3918365b5228c33cc4a')]"
+        ],
+        "businessDate": [
+          "[\"2026-11-22\", \"2026-08-25\"]"
+        ]
+      }
+    }
+  }
+}

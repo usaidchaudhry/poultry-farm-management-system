@@ -18,14 +18,14 @@ export const passwordChanged = (req, res, next) => {
   next();
 };
 
-export const permission = (...codes) => (req, res, next) => {
+export const permission = (...codes) => Object.assign((req, res, next) => {
   if (!codes.every((code) => req.actor.permissions.includes(code))) throw denied();
   next();
-};
-export const anyPermission = (...codes) => (req, res, next) => {
+}, { permissionCodes: codes });
+export const anyPermission = (...codes) => Object.assign((req, res, next) => {
   if (!codes.some((code) => req.actor.permissions.includes(code))) throw denied();
   next();
-};
+}, { anyPermissionCodes: codes });
 
 export const companyScope = (req, res, next) => {
   if (req.actor.scopeMode !== 'company') throw denied();

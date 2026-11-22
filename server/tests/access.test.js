@@ -1,3 +1,4 @@
+import { seedDemoScenario } from '../src/scripts/demo-scenario-service.js';
 import { after, before, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
@@ -1300,4 +1301,111 @@ test('phase 9 overdue medication reminders retain source authorization and clear
   await f.doctor.send('post', '/notifications/' + medical.id + '/resolve', { version: 1, note: 'Review recorded and complete' });
   await f.manager.send('delete', '/evidence/files/' + image.id, undefined, 409);
   await f.doctor.agent.get('/api/v1' + image.downloadPath).expect(200);
+});
+
+test('phase 10 reports/dashboard reconcile published eggs, exact finance, weighted measurements, safe exports and print snapshots', async () => {
+  const f = await commerceFixture();
+  await f.postSale(f.saleInput(1, { buyer: '=HYPERLINK("https://example.test","buyer")' }));
+  await f.operator.send('post', '/expenses', { farmId: f.farmA.id, businessDate: today(), category: 'electricity', amount: '7000', reference: 'PHASE10-EXPENSE' }, 201, randomUUID());
+  const query = '?farmId=' + f.farmA.id;
+  const report = (await admin.agent.get('/api/v1/reports/egg-production' + query).expect(200)).body;
+  assert.equal(report.meta.summary.collectedEggs, 735); assert.equal(report.meta.summary.saleableEggs, 720);
+  const finance = (await admin.agent.get('/api/v1/reports/financial-results' + query).expect(200)).body;
+  assert.equal(finance.meta.summary.revenue, '18000.00'); assert.equal(finance.meta.summary.operatingSurplus, '11000.00');
+  const overview = (await admin.agent.get('/api/v1/dashboard' + query).expect(200)).body.data;
+  assert.equal(overview.sections['egg-production'].summary.saleableEggs, 720); assert.equal(overview.sections['financial-results'].summary.operatingSurplus, '11000.00');
+  for (const [sampleSize, averageWeight, unit] of [[10, 1.6, 'kg'], [30, 1800, 'g']]) await admin.send('post', '/bird-measurements', { flockId: f.flock.id, measuredAt: new Date().toISOString(), sampleSize, averageWeight, unit }, 201);
+  const weights = (await admin.agent.get('/api/v1/reports/bird-weight' + query).expect(200)).body;
+  assert.equal(weights.meta.summary.weightedAverageGrams, '1750'); assert.equal(weights.meta.summary.sampleSize, 40);
+  const exported = await f.operator.agent.get('/api/v1/reports/sales/export' + query).expect(200); assert.match(exported.text, /'=HYPERLINK/); assert.ok(exported.headers['content-type'].includes('text/csv'));
+  let returned = (await admin.send('post', '/daily-reports/' + f.report.id + '/return', { version: f.report.version, reason: 'Draft must not alter exported production' })).body.data;
+  await admin.send('patch', '/daily-reports/' + returned.id, { version: returned.version, data: { ...f.reportData, eggs: { ...f.reportData.eggs, standard: 999 } } });
+  assert.equal((await admin.agent.get('/api/v1/reports/egg-production' + query)).body.meta.summary.saleableEggs, 720);
+  const printed = await admin.agent.get('/api/v1/daily-reports/' + f.report.id + '/print').expect(200); assert.match(printed.text, /720/); assert.match(printed.text, /360 eggs/); assert.equal(printed.text.includes('>999<'), false);
+});
+test('phase 10 aggregation/export permissions, ancestor filters and date policy deny alternate history and cost paths', async () => {
+  const f = await formulaFixture(); const query = '?farmId=' + f.farmA.id;
+  const other = await assigned('operation_manager', 'insight-other', [f.farmB.id]);
+  for (const path of ['/dashboard', '/reports/sales', '/reports/sales/export']) await other.agent.get('/api/v1' + path + query).expect(404);
+  for (const path of ['/dashboard', '/reports/sales', '/reports/sales/export']) await f.operator.agent.get('/api/v1' + path + '?from=' + daysAgo(3) + '&to=' + today()).expect(403);
+  await f.operator.agent.get('/api/v1/reports/sales?farmId=' + f.farmA.id + '&flockId=' + f.flock.id).expect(422);
+  await admin.agent.get('/api/v1/reports/daily-poultry?farmId=' + f.farmB.id + '&flockId=' + f.flock.id).expect(422);
+  await f.manager.agent.get('/api/v1/reports/formula-cost').expect(403);
+  const managerOverview = (await f.manager.agent.get('/api/v1/dashboard').expect(200)).body.data;
+  assert.equal(managerOverview.sections['financial-results'], undefined); assert.equal(managerOverview.sections.sales, undefined); assert.equal(managerOverview.sections.inventory, undefined); noFormulaPrices(managerOverview);
+  const catalog = (await f.operator.agent.get('/api/v1/reports/catalog').expect(200)).body.data;
+  assert.equal(catalog.some((d) => d.key === 'daily-poultry'), false); assert.ok(catalog.some((d) => d.key === 'formula-cost'));
+  const printDenied = await f.manager.agent.get('/api/v1/daily-reports/' + 'a'.repeat(24) + '/print'); assert.equal(printDenied.status, 403);
+});
+test('phase 10 audit is searchable, scoped to company authority, date constrained, redacted and immutable through API', async () => {
+  const f = await clinicalFixture();
+  const listed = (await admin.agent.get('/api/v1/audit-events?farmId=' + f.farmA.id + '&action=clinical.visit-created').expect(200)).body;
+  assert.equal(listed.meta.total, 1); const event = listed.data[0]; assert.equal(event.farmId, f.farmA.id);
+  const detail = (await admin.agent.get('/api/v1/audit-events/' + event.id).expect(200)).body.data;
+  assert.equal(JSON.stringify(detail).includes('Recorded clinical assessment'), false); assert.equal(JSON.stringify(detail).includes('passwordHash'), false);
+  await f.manager.agent.get('/api/v1/audit-events').expect(403);
+  await admin.send('post', '/audit-events', { action: 'forged' }, 404);
+  await admin.send('patch', '/audit-events/' + event.id, { changes: {} }, 404);
+  await admin.send('delete', '/audit-events/' + event.id, undefined, 404);
+  const found = (await admin.agent.get('/api/v1/audit-events?search=clinical.visit-created').expect(200)).body; assert.ok(found.meta.total >= 1);
+  await admin.agent.get('/api/v1/audit-events?search[$ne]=x').expect(422);
+});
+
+test('phase 11 full demo uses relative dates, all roles, sample clinical labels and repeatable source keys without resets', async () => {
+  const seeded = await seedDemoScenario(config, initialPassword); assert.equal(seeded.businessDate, today()); assert.equal(seeded.accounts.length, 6);
+  const before = { reports: await DailyReport.countDocuments(), sales: await Sale.countDocuments(), stock: await StockMovement.countDocuments(), files: await EvidenceFile.countDocuments() };
+  const again = await seedDemoScenario(config, initialPassword); assert.equal(again.saleId, seeded.saleId);
+  assert.deepEqual({ reports: await DailyReport.countDocuments(), sales: await Sale.countDocuments(), stock: await StockMovement.countDocuments(), files: await EvidenceFile.countDocuments() }, before);
+  assert.equal(await H.flock.countDocuments({ placementDate: daysAgo(1) }), 2);
+  const f = await H.farm.findOne({ nameKey: 'demo farm alpha' });
+  assert.equal((await admin.agent.get('/api/v1/reports/financial-results?farmId=' + f._id).expect(200)).body.meta.summary.operatingSurplus, '11000.00');
+  assert.equal(await User.countDocuments({ mustChangePassword: true }), 6);
+  assert.equal(await Prescription.countDocuments({ status: 'finalized' }), 1); assert.equal(await MedicationTask.countDocuments(), 12);
+  await assert.rejects(seedDemoScenario({ ...config, production: true }, initialPassword), /disabled in production/);
+});
+
+test('narrow report grants and audit history cannot disclose broader source fields or older source changes', async () => {
+  const f = await commerceFixture();
+  const role = (await admin.send('post', '/roles', { code: 'narrow_insights', name: 'Narrow insights', description: '', scopeMode: 'company', permissions: ['dashboard.view', 'reports.view', 'reports.export', 'egg-production.view', 'audit.view'] })).body.data;
+  const s = await staff(null, 'narrow-insights');
+  await admin.send('put', `/users/${s.record._id}/role`, { roleId: role.id, version: s.record.version });
+  const viewer = await client('narrow-insights@layerflow.test', changedPassword);
+  const eggs = (await viewer.agent.get('/api/v1/reports/egg-production').expect(200)).body;
+  assert.equal(eggs.meta.summary.saleableEggs, 720);
+  for (const key of ['mortality', 'openingBirds', 'feedKg', 'waterLitres']) { assert.equal(eggs.data[0][key], undefined); assert.equal(eggs.meta.summary[key], undefined); }
+  for (const type of ['daily-poultry', 'mortality', 'formula-cost', 'sales', 'financial-results']) await viewer.agent.get('/api/v1/reports/' + type + '/export').expect(403);
+  const event = await AuditEvent.findOne({ targetId: f.report.id, action: 'report.submit' }); assert.ok(event);
+  const detail = (await viewer.agent.get('/api/v1/audit-events/' + event._id).expect(200)).body.data;
+  assert.match(detail.changes.redacted, /Source read permission/);
+  await AuditEvent.updateOne({ _id: event._id }, { $set: { businessDate: daysAgo(3) } });
+  await viewer.agent.get('/api/v1/audit-events/' + event._id).expect(403);
+  const list = (await viewer.agent.get('/api/v1/audit-events?targetId=' + f.report.id).expect(200)).body;
+  assert.equal(list.data.some((row) => row.id === String(event._id)), false);
+  await viewer.agent.get('/api/v1/audit-events?from=' + daysAgo(3) + '&to=' + today()).expect(403);
+});
+
+test('localhost demo picker offers every seeded role through normal login, never exposes bootstrap or changed credentials', async () => {
+  assert.deepEqual((await request(app).get('/api/v1/auth/demo-accounts').expect(200)).body.data, []);
+  assert.throws(() => readConfig({ NODE_ENV: 'production', LOCAL_DEMO_LOGIN: 'true' }), /non-production/);
+  assert.throws(() => readConfig({ HOST: '0.0.0.0', LOCAL_DEMO_LOGIN: 'true' }), /loopback/);
+  await seedDemoScenario(config, initialPassword);
+  config.demoLoginEnabled = true; config.demoPassword = initialPassword;
+  try {
+    const rows = (await request(app).get('/api/v1/auth/demo-accounts').expect(200)).body.data;
+    assert.equal(rows.length, 6); assert.equal(new Set(rows.map((row) => row.roleLabel)).size, 5);
+    assert.equal(rows.some((row) => row.email === owner.email), false);
+    assert.equal(JSON.stringify(rows).includes('passwordHash'), false);
+    for (const row of rows) {
+      assert.equal(row.password, initialPassword);
+      const account = await client(row.email, row.password);
+      assert.equal(account.user.mustChangePassword, true);
+      await account.agent.get('/api/v1/dashboard').expect(403);
+    }
+    const demoOwner = await client('demo-owner@layerflow.test');
+    await demoOwner.send('post', '/auth/change-password', { currentPassword: initialPassword, newPassword: changedPassword });
+    const refreshed = (await request(app).get('/api/v1/auth/demo-accounts').expect(200)).body.data;
+    assert.equal(refreshed.find((row) => row.email === 'demo-owner@layerflow.test').password, '');
+    config.production = true;
+    assert.deepEqual((await request(app).get('/api/v1/auth/demo-accounts').expect(200)).body.data, []);
+  } finally { config.demoLoginEnabled = false; delete config.demoPassword; config.production = false; }
 });

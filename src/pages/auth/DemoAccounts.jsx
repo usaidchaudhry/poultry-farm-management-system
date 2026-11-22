@@ -3,7 +3,7 @@ import { DEMO_LOGINS, DEMO_PASSWORD } from '../../mock/seedUsers.js';
 import './LoginPage.css';
 
 // DEMO ONLY: lists the seeded accounts so you can fill the form with one click.
-// Delete this component (and its use in LoginPage) before connecting a real backend.
+// API mode uses the separate localhost account picker, backed by seeded users.
 export default function DemoAccounts({ onPick, disabled }) {
   return (
     <details className="demo">

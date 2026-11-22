@@ -215,3 +215,36 @@ Phase 8 supersedes the historical egg deferral above. Changes are included with 
 - [x] Verification: 69 backend checks, 9 mock checks, full clean-browser workflow, production build, 85 server syntax checks, documentation links and whitespace checks passed. Final focused evidence checks also passed after storage-recovery and archived-context safeguards.
 
 Phase 9 adds no external delivery service, automatic treatment advice, stock issue from medication, image-revision snapshot claims, or production queue platform. Persistent private disk and MongoDB must be backed up together. Current open alerts do not grant old source-record history. Phases 8 and 9 are included together in the user-requested local commit; no remote push was performed.
+
+### MERN Phase 10 completion (22 November 2026)
+
+- [x] Bounded server dashboard aggregations and ten report definitions with published revision sources, correct units/denominators, weighted measurements and exact recorded financial totals.
+- [x] Reusable scope/date/status/category filters, pagination, dated accessible charts, unavailable-data labels and source links.
+- [x] Source-grant-aware field projections; scope/history checks on dashboard, list, export, print and audit; no broader poultry fields through narrow egg/mortality grants.
+- [x] Formula-safe quoted CSV, 10,000-row export guard and authenticated submitted-revision print/Save as PDF.
+- [x] Company-scoped searchable audit viewer, immutable hierarchy/business-date context migration, redacted details and rejected mutation routes.
+- [x] Live Dashboard/Analytics/Audit integration and authority/failure clearing of stale service-backed results.
+- [x] Known-input reconciliation, wrong-scope/history/privacy checks, production browser exports/print/audit keyboard verification. See `docs/MERN_PHASE_10_IMPLEMENTATION.md`.
+
+### MERN Phase 11 implementation and verification (22 November 2026)
+
+- [x] Read all 17 existing repository Markdown documents before implementation; preserve historical phase records.
+- [x] Production same-origin SPA/API, HTTPS/session/CSRF configuration, readiness/fallback checks and build-time mock rejection.
+- [x] Prepared non-root multi-stage Docker image, Caddy HTTPS and persistent private upload/backup/TLS volumes; Compose configuration validates.
+- [x] Repeatable relative-date full demo using real services, all roles and explicitly labeled sample clinical/image records; no account/password reset.
+- [x] Paired canonical Extended JSON/private-image backup and verified separate empty-target restoration, checksums, nonempty/corrupt refusal and reauthentication.
+- [x] Full 74-check API/database/restart/performance run, nine mock checks, full existing browser workflow, and two additional focused disclosure/CSV checks. Final corruption/restart check also passed.
+- [x] Production HTTPS all-role phone/tablet/desktop verification, empty/error/session states, multi-farm scope, audit modal keyboard operation and visually reviewed screenshots.
+- [x] Independent clean dependency installations and build, generated 104-path API specification, schema diagram, acceptance mapping, environment/deployment/recovery guides and demonstration script.
+- [x] Scope resolved by user: localhost only; skip public deployment and features requiring external services, third-party APIs or cloud. Local Express API, MongoDB replica set and private disk supply the application baseline. Public-host checks and cloud configuration are excluded; Docker/Caddy remain optional unexecuted reference material.
+
+Phases 10 and 11 are complete for the user-approved localhost scope. The public deployment requirement was explicitly removed by the user's clarification. See `docs/MERN_PHASE_11_IMPLEMENTATION.md` and `docs/ACCEPTANCE_RESULTS.md`. Existing frontend dependency advisories and course-scale infrastructure limits are recorded there. Changes remain uncommitted; no remote push was requested for this work.
+
+### Local demo login follow-up (22 November 2026)
+
+- [x] Retained the historical mock account picker and added a live localhost picker for all five role types, including a separate seeded demo Owner and two differently scoped Farm Managers.
+- [x] Explicit `LOCAL_DEMO_LOGIN` plus `DEMO_PASSWORD` configuration; non-production/loopback restrictions; only seeded active demo identities; bootstrap credentials and changed passwords remain undisclosed.
+- [x] Account selection fills normal sign-in credentials; no session, permission or first-password-change bypass. Repeated seeding preserves changed credentials.
+- [x] Focused API checks verify all six accounts, role coverage, repeatable seeding, password-change enforcement, credential redaction and disabled/production behavior. Production build and regenerated 105-path API specification passed.
+- [x] `npm run test:demo-login` passed actual browser selection/login/password-change/dashboard workflows for all six accounts and five roles, with no runtime errors. Reviewed phone-width picker evidence is in `docs/evidence/demo-picker-mobile.png`.
+- [x] Executed the requested actual localhost setup: ignored environment files, persistent MongoDB, normal Owner bootstrap/password change, full scenario seed, background API/frontend and six verified real demo sign-ins. Presentation account passwords remain `LayerFlowDemo123!` until first-login change. See `docs/LOCAL_TESTING.md` for the running URL, credentials and restart instructions.

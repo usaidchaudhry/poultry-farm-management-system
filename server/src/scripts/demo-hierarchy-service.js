@@ -8,6 +8,7 @@ import { audit } from '../modules/access/audit.js';
 import { openingMovement } from '../modules/reports/models.js';
 import { defaultLocations } from '../modules/inventory/models.js';
 import { setupEggFarm } from '../modules/commerce/setup.js';
+import { businessDate } from '../policies/dates.js';
 
 // Explicit, optional demonstration fixture. Never resets an existing hierarchy
 // or account and never ships a default password.
@@ -29,7 +30,7 @@ export async function seedDemoHierarchy(temporaryPassword) {
       await defaultLocations(farm, session);
       await setupEggFarm(farm, session);
       const [house] = await H.house.create([{ ...common, farmId: farm._id, name: `Demo House ${suffix}`, nameKey: `demo house ${suffix.toLowerCase()}`, capacity: 1000 }], { session });
-      const [flock] = await H.flock.create([{ ...common, farmId: farm._id, houseId: house._id, name: `Demo Layer ${suffix}`, nameKey: `demo layer ${suffix.toLowerCase()}`, birdType: 'Layer', placementDate: '2026-11-01', initialCount: 500 }], { session });
+      const [flock] = await H.flock.create([{ ...common, farmId: farm._id, houseId: house._id, name: `Demo Layer ${suffix}`, nameKey: `demo layer ${suffix.toLowerCase()}`, birdType: 'Layer', placementDate: businessDate(new Date(Date.now() - 86400000), organization.timezone), initialCount: 500 }], { session });
       await openingMovement(flock, session);
       const email = `demo-${suffix.toLowerCase()}@layerflow.test`;
       const [user] = await User.create([{ organizationId: organization._id, name: `Demo Manager ${suffix}`, email, passwordHash, roleId: role._id, farmIds: [farm._id], mustChangePassword: true }], { session });

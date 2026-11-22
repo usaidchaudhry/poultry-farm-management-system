@@ -11,6 +11,7 @@ export function authRoutes(config) {
     handler: (req, res) => res.status(429).json({ code: 'RATE_LIMITED', message: 'Too many attempts. Try again later.', requestId: req.id }),
   });
   router.get('/csrf', controller.issueCsrf);
+  router.get('/demo-accounts', limiter, controller.demos);
   router.post('/login', limiter, body(z.object({ email, password: z.string().min(1).max(128) }).strict()), controller.login);
   router.get('/me', authenticated, controller.me);
   router.post('/logout', controller.logout(config));

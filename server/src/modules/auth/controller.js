@@ -2,6 +2,9 @@ import { newCsrfToken } from '../../middleware/csrf.js';
 import { publicUser } from '../access/serialization.js';
 import { audit } from '../access/audit.js';
 import * as service from './service.js';
+import { demoAccounts } from './demo.js';
+
+export const demos = async (req, res) => res.json({ data: await demoAccounts(req.app.get('config'), req.socket.remoteAddress) });
 
 const regenerate = (req) => new Promise((resolve, reject) => req.session.regenerate((error) => error ? reject(error) : resolve()));
 const save = (req) => new Promise((resolve, reject) => req.session.save((error) => error ? reject(error) : resolve()));

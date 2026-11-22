@@ -3,10 +3,13 @@ import Input from '../../components/forms/Input.jsx';
 import Select from '../../components/forms/Select.jsx';
 import { useFarm } from '../../context/FarmContext.jsx';
 import { getErrorMessage } from '../../services/apiError.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 export const eggKeys = ['jumbo', 'starter', 'standard', 'small', 'floor', 'broken', 'discard'];
 export const label = (s) => s[0].toUpperCase() + s.slice(1);
 export const shown = (v) => v === null || v === undefined ? 'Unavailable' : v;
 export function useRecords(service, query, extra) {
+  const { user } = useAuth();
+  const authority = JSON.stringify([user?.id, user?.roleVersion, user?.permissions, user?.siteIds, user?.farmIds]);
   const [result, setResult] = useState({ data: [], meta: {} });
   const [loading, setLoading] = useState(true); const [error, setError] = useState('');
   const sequence = useRef(0); const key = JSON.stringify(query);
@@ -15,8 +18,8 @@ export function useRecords(service, query, extra) {
     try { const value = await service(JSON.parse(key), extra); if (request === sequence.current) setResult(value); }
     catch (err) { if (request === sequence.current) { setError(getErrorMessage(err)); setResult({ data: [], meta: {} }); } }
     finally { if (request === sequence.current) setLoading(false); }
-  }, [service, key, extra]);
-  useEffect(() => { reload(); return () => { sequence.current += 1; }; }, [reload]);
+  }, [service, key, extra, authority]);
+  useEffect(() => { setResult({ data: [], meta: {} }); reload(); return () => { sequence.current += 1; }; }, [reload]);
   return { ...result, loading, error, reload };
 }
 // The API supplies dates in the organization timezone; Asia/Karachi is the

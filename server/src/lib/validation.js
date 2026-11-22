@@ -17,7 +17,7 @@ export function parse(schema, value) {
   return result.data;
 }
 
-export const body = (schema) => (req, res, next) => { req.input = parse(schema, req.body); next(); };
+export const body = (schema) => Object.assign((req, res, next) => { req.input = parse(schema, req.body); next(); }, { apiSchema: schema });
 export const validId = (req, res, next) => { parse(id, req.params.id); next(); };
 export function assertVersion(record, expected) {
   if (record.version !== expected) throw new AppError(409, 'VERSION_CONFLICT', 'This record changed. Refresh it before saving.');

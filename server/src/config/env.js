@@ -1,9 +1,17 @@
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export function readConfig(env = process.env) {
   if (env.NODE_ENV && !['development', 'test', 'production'].includes(env.NODE_ENV)) throw new Error('NODE_ENV must be development, test, or production.');
   if (env.COOKIE_SECURE && !['true', 'false'].includes(env.COOKIE_SECURE)) throw new Error('COOKIE_SECURE must be true or false.');
   const production = env.NODE_ENV === 'production';
+  if (env.LOCAL_DEMO_LOGIN && !['true', 'false'].includes(env.LOCAL_DEMO_LOGIN)) throw new Error('LOCAL_DEMO_LOGIN must be true or false.');
+  const demoLoginEnabled = env.LOCAL_DEMO_LOGIN === 'true';
+  const host = env.HOST || '127.0.0.1';
+  if (demoLoginEnabled && (production || !['127.0.0.1', '::1'].includes(host))) throw new Error('Local demo login requires non-production mode and a loopback bind address.');
+  if (demoLoginEnabled && (!env.DEMO_PASSWORD || env.DEMO_PASSWORD.length < 12 || env.DEMO_PASSWORD.length > 128)) throw new Error('Set DEMO_PASSWORD to 12-128 characters for local demo login.');
+  if (!['127.0.0.1', '0.0.0.0', '::1', '::'].includes(host)) throw new Error('HOST must be an explicit loopback or all-interface address.');
+  if (env.SERVE_SPA && !['true', 'false'].includes(env.SERVE_SPA)) throw new Error('SERVE_SPA must be true or false.');
   const secret = env.SESSION_SECRET || '';
   if (secret.length < 32 || secret.startsWith('replace-with-')) throw new Error('Set SESSION_SECRET to a random secret of at least 32 characters.');
   const mongoUri = env.MONGODB_URI;
@@ -26,8 +34,10 @@ export function readConfig(env = process.env) {
   if (!Number.isFinite(mortalityAlertPercent) || mortalityAlertPercent <= 0 || mortalityAlertPercent > 100) throw new Error('MORTALITY_ALERT_PERCENT must be greater than zero and at most 100.');
   if (!Number.isInteger(trustProxy) || trustProxy < 0 || trustProxy > 5) throw new Error('TRUST_PROXY must be a hop count from 0 to 5.');
   return {
-    nodeEnv: env.NODE_ENV || 'development', production,
-    port: positiveInteger('PORT', 5000, 65535), mongoUri,
+    nodeEnv: env.NODE_ENV || 'development', production, demoLoginEnabled, demoPassword: demoLoginEnabled ? env.DEMO_PASSWORD : undefined,
+    port: positiveInteger('PORT', 5000, 65535), host, mongoUri,
+    serveSpa: env.SERVE_SPA === undefined ? production : env.SERVE_SPA === 'true',
+    spaDir: resolve(env.SPA_DIR || fileURLToPath(new URL('../../../dist/', import.meta.url))),
     frontendOrigin: origin.origin, sessionSecret: secret,
     sessionMaxAge: positiveInteger('SESSION_MAX_AGE_MS', 28_800_000, 604_800_000),
     cookieSecure: secure, cookieSameSite: sameSite, cookieName: 'layerflow.sid',

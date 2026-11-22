@@ -1,0 +1,16 @@
+{
+  "checks": [
+    "production process serves the API-only SPA over HTTPS; secure cookies, CSRF/origin, empty dashboard and JSON API errors",
+    "Farm Manager production workflow, permissions and 360px layout",
+    "Operation Manager production workflow, permissions and 390px layout",
+    "Doctor production workflow, permissions and 768px layout",
+    "Production Manager production workflow, permissions and 768px layout",
+    "live report totals/CSV, printable published revision and searchable read-only audit with keyboard focus restoration",
+    "API failure clears stale metrics, retry recovers, and production restart preserves session and private evidence",
+    "restored database/files run in production, require reauthentication, preserve totals, and expired sessions return to login"
+  ],
+  "browserErrors": [],
+  "production": true,
+  "liveMongoDB": true,
+  "publicDeployment": false
+}

@@ -21,9 +21,13 @@ const userSchema = new Schema({
 userSchema.index({ organizationId: 1, email: 1 }, { unique: true });
 const auditSchema = new Schema({
   organizationId: ref('Organization', false), actorId: ref('User', false), action: { type: String, required: true },
+  actorName: String, siteId: ref('Site', false), farmId: ref('Farm', false), farmIds: [Schema.Types.ObjectId], houseId: ref('House', false), flockId: ref('Flock', false), businessDate: String,
   targetType: String, targetId: String, requestId: String, changes: Schema.Types.Mixed,
 }, { ...options, timestamps: { createdAt: true, updatedAt: false } });
 auditSchema.index({ organizationId: 1, createdAt: -1 });
+auditSchema.index({ organizationId: 1, actorId: 1, createdAt: -1 });
+auditSchema.index({ organizationId: 1, targetType: 1, targetId: 1, createdAt: -1 });
+auditSchema.index({ organizationId: 1, farmId: 1, createdAt: -1 });
 const guardSchema = new Schema({ _id: String, revision: { type: Number, default: 0 } }, { versionKey: false });
 const migrationSchema = new Schema({ _id: String, appliedAt: Date }, { versionKey: false });
 const idempotencySchema = new Schema({ actorId: ref('User'), operation: String, key: String, fingerprint: String, result: Schema.Types.Mixed, expiresAt: Date }, options);

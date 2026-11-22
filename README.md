@@ -1,6 +1,6 @@
 # LayerFlow
 
-A poultry-management Web Programming university course project using React, Express, Node.js, and MongoDB. **MERN Phases 0-9 are implemented:** backend foundation, authentication and administration, farm hierarchy/scope, daily reports/revisions, mortality/population/measurements, clinical prescriptions and independent medication outcomes, location inventory/report feed issues, versioned formula costing, report-derived egg stock, sales, expenses, recorded financial results, private evidence, medical alerts, and durable in-app reminders. Dashboard/report exports and audit viewing remain integration-pending in API mode; explicit mock mode retains the historical demo.
+A poultry-management university course project using React 18, Express, Node.js and MongoDB. **MERN Phases 0-11 are complete for the approved localhost scope**, including live dashboards, ten reports, CSV/print output, searchable audit, relative-date demo seeding, database/file recovery, verification and submission documentation. Public deployment and features requiring external services, third-party APIs or cloud are skipped by user request. The local Express API and MongoDB remain required.
 
 - [Product requirements and phased plan](LayerFlow_MERN_PRD.md)
 - [Implementation log, decisions, data dictionary, API contract, and verification](docs/MERN_PHASE_0_2_IMPLEMENTATION.md)
@@ -11,6 +11,14 @@ A poultry-management Web Programming university course project using React, Expr
 - [Phase 7 formula composition, costing, privacy, and immutable versions](docs/MERN_PHASE_7_IMPLEMENTATION.md)
 - [Phase 8 egg publication, sales, expenses, and recorded financial results](docs/MERN_PHASE_8_IMPLEMENTATION.md)
 - [Phase 9 private evidence, alert lifecycle, durable reminders, and storage deployment](docs/MERN_PHASE_9_IMPLEMENTATION.md)
+- [Phase 10 dashboard, reports, exports and audit](docs/MERN_PHASE_10_IMPLEMENTATION.md)
+- [Phase 11 localhost completion and scope decisions](docs/MERN_PHASE_11_IMPLEMENTATION.md)
+- [Acceptance results and evidence](docs/ACCEPTANCE_RESULTS.md)
+- [Production deployment](docs/DEPLOYMENT.md)
+- [Backup and recovery](docs/BACKUP_RESTORE.md)
+- [Schema diagram](docs/SCHEMA.md) and [OpenAPI specification](docs/openapi.json)
+- [Demonstration script](docs/DEMO_SCRIPT.md)
+- [Configured localhost testing and demo credentials](docs/LOCAL_TESTING.md)
 - [Exact default role/permission matrix](docs/ACCESS_MATRIX.md)
 - [Progress checklist](PROGRESS.md)
 
@@ -90,7 +98,7 @@ The API listens on loopback. `/api/v1/health` reports process state; `/api/v1/re
 6. Role permission edits affect existing sessions on their next protected API request. Deactivation, password reset, and role assignment invalidate previous sessions immediately.
 7. Use **My profile → Change password** for your own password. Use the Users reset action for other accounts.
 
-Open **Organization** to create Sites > Farms > Houses > Flocks. One active flock is permitted per house. In **Users**, assign sites or farms to staff with assigned-scope roles. Assignment changes end their existing sessions; sign in again. The top-bar working-area selector displays only accessible active records. Live inventory/sales pages show their pending integration phase. They do not display local mock records to real authenticated accounts. User/role administration requires company scope and its corresponding permissions; assigned operational roles do not gain account-administration access.
+Open **Organization** to create Sites > Farms > Houses > Flocks. One active flock is permitted per house. In **Users**, assign sites or farms to staff with assigned-scope roles. Assignment changes end their existing sessions; sign in again. The top-bar working-area selector displays only accessible active records. Operational pages use live APIs and never display local mock records to real authenticated accounts. User/role administration requires company scope and its corresponding permissions; assigned operational roles do not gain account-administration access.
 
 ## Daily reporting and bird measurements
 
@@ -145,6 +153,16 @@ The worked 60 kg at PKR 10/kg plus 40 kg at PKR 20/kg example yields PKR 1,400 t
 
 The example of 720 eggs, a one-Peti sale at PKR 18,000, and PKR 7,000 expenses leaves 360 eggs and PKR 11,000 recorded operating surplus. Historical report eggs are not silently backfilled: a company supervisor checks physical opening stock before explicitly initializing legacy evidence.
 
+## Reports and submission
+
+Dashboard and Reports and analytics aggregate real permitted source data on the server. Reports reuse hierarchy/date filters, support paginated tables and CSV, and retain exact decimal totals. Daily report detail links to an authenticated printable submitted revision. Audit is read-only and company-scoped; source permissions and history still apply.
+
+For a complete relative-date demonstration, first finish the Owner password change, set a private `DEMO_PASSWORD` in `server/.env`, then run `npm run db:demo:full`. Existing records/passwords are preserved. See the demonstration script for sample labels and expected totals.
+
+To keep role-based demo choices on the localhost sign-in page, set `LOCAL_DEMO_LOGIN=true` in `server/.env` alongside the same `DEMO_PASSWORD`, run `npm run db:demo:full`, and restart the API. The picker includes a separate demo Owner, Production Manager, two Farm Managers, Operation Manager and Doctor. Selecting an account fills its email and matching temporary password. After its password is changed, enter its current password manually; rerunning the seed does not reset it. Normal login and first-password-change checks remain in effect. This helper requires a non-production API bound to loopback; the historical mock picker remains available in explicit mock mode.
+
+Use the localhost setup above for delivery. The local MongoDB helper and private upload directory provide persistence without cloud services. Production HTTPS serving was verified locally; deployment configuration is retained as optional reference. Public hosting, external messaging and third-party runtime APIs are outside the approved scope.
+
 ## Commands
 
 | Command | Purpose |
@@ -156,6 +174,12 @@ The example of 720 eggs, a one-Peti sale at PKR 18,000, and PKR 7,000 expenses l
 | `npm run db:bootstrap` | Create initial Owner from private environment input |
 | `npm run db:migrate` | Apply repeatable indexes and numbered migrations |
 | `npm run db:demo` | Optional two-farm demonstration fixture; requires private `DEMO_PASSWORD` and empty development hierarchy |
+| `npm run db:demo:full` | Relative-date full demonstration; private `DEMO_PASSWORD`, non-production only |
+| `npm run db:backup -- <new-directory>` | Paired database/private-file backup |
+| `npm run db:restore -- <bundle-directory>` | Restore to separate empty database and new upload directory |
+| `npm run test:release` | Production HTTPS/all-role/restart/recovery browser verification |
+| `npm run test:demo-login` | Verify localhost role picker, normal login and password change for all six demo accounts |
+| `npm run docs:api` | Regenerate OpenAPI request/permission specification |
 | `npm run db:check` | Verify connection and real transaction execution |
 | `npm run build` | Production frontend bundle in `dist/` |
 | `npm run preview` | Preview frontend bundle; a real API must be served/proxied separately |
@@ -172,7 +196,7 @@ Frontend values are public and compiled into the browser bundle:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `VITE_DATA_MODE` | `api` | `api` for live identity and organization; `mock` explicitly opens the historical demo |
+| `VITE_DATA_MODE` | `api` | `api` for all live workflows; `mock` opens the historical demo in development only |
 | `VITE_API_BASE_URL` | `/api/v1` | API prefix; development uses the Vite proxy |
 | `VITE_APP_NAME` | `LayerFlow` | Visible application name |
 
@@ -181,6 +205,11 @@ Server configuration belongs in `server/.env`:
 | Variable | Purpose |
 | --- | --- |
 | `NODE_ENV` | Development/test/production behavior |
+| `HOST` | Bind address; loopback by default, `0.0.0.0` in the container |
+| `SERVE_SPA`, `SPA_DIR` | Serve built SPA (default in production); default repository `dist/` |
+| `DEMO_PASSWORD` | Private temporary staff password for explicit local demo seeding |
+| `LOCAL_DEMO_LOGIN` | Explicit localhost account picker; default false. Shows only seeded demo accounts and matching temporary passwords; never bootstrap credentials. Requires non-production loopback binding. |
+| `RESTORE_MONGODB_URI`, `RESTORE_UPLOAD_DIR` | Separate empty database and new private upload directory, restore command only |
 | `PORT` | API port; default 5000, matching the development proxy |
 | `MONGODB_URI` | Transaction-capable database URI |
 | `FRONTEND_ORIGIN` | Exact permitted frontend origin; default `http://localhost:5173` |
@@ -206,7 +235,7 @@ VITE_DATA_MODE=mock
 
 Mock mode retains browser-persisted sample users, farm structure, daily reports, clinical/medication flows, inventory, formulas, sales, finance, alerts, and audit. The login helper clearly identifies those as mock accounts. They are not live server credentials, and clearing browser storage does not reset MongoDB.
 
-Restore `VITE_DATA_MODE=api` before working with the live backend. Requests never silently fall back to mock data.
+Restore `VITE_DATA_MODE=api` before working with the live backend. Production builds reject mock mode; requests never silently fall back to mock data.
 
 ## Project structure and conventions
 
